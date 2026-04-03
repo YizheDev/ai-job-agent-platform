@@ -1,13 +1,14 @@
 """系统设置页面
 
 账号管理、风控参数、大模型 API 配置、数据隐私、用户协议。
+使用标签页子导航, 商务极简表单。
 """
 
 from __future__ import annotations
 
 import gradio as gr
 
-from app.core.config import get_settings, reload_settings
+from app.core.config import get_settings, reload_settings, update_env_file
 from app.core.logger import get_logger
 from app.db.crud import SysConfigCRUD
 from app.utils.security_util import clear_cookie, wipe_all_data
@@ -47,33 +48,39 @@ def _load_settings():
             settings.LLM_BASE_URL,
             settings.LLM_MODEL,
         )
-    except Exception as e:
+    except Exception:
         return 20, 2, 4, 9, 18, 70, "", "", ""
 
 
 def _save_risk_settings(max_daily, min_delay, max_delay, start_hour, end_hour, threshold):
-    """保存风控设置"""
+    """保存风控设置到 .env 并热更新"""
     try:
-        SysConfigCRUD.set("MAX_DAILY_DELIVERY", str(int(max_daily)))
-        SysConfigCRUD.set("MIN_DELAY_SECONDS", str(int(min_delay)))
-        SysConfigCRUD.set("MAX_DELAY_SECONDS", str(int(max_delay)))
-        SysConfigCRUD.set("DELIVERY_START_HOUR", str(int(start_hour)))
-        SysConfigCRUD.set("DELIVERY_END_HOUR", str(int(end_hour)))
-        SysConfigCRUD.set("MATCH_THRESHOLD", str(int(threshold)))
+        update_env_file({
+            "MAX_DAILY_DELIVERY": str(int(max_daily)),
+            "MIN_DELAY_SECONDS": str(int(min_delay)),
+            "MAX_DELAY_SECONDS": str(int(max_delay)),
+            "DELIVERY_START_HOUR": str(int(start_hour)),
+            "DELIVERY_END_HOUR": str(int(end_hour)),
+            "MATCH_THRESHOLD": str(int(threshold)),
+        })
+        reload_settings()
         logger.info("风控设置已保存")
-        return "风控设置保存成功"
+        return "✓ 风控设置保存成功"
     except Exception as e:
         return f"保存失败: {e}"
 
 
 def _save_api_settings(api_key, base_url, model):
-    """保存 API 设置"""
+    """保存 API 设置到 .env 并热更新"""
     try:
-        SysConfigCRUD.set("LLM_API_KEY", api_key)
-        SysConfigCRUD.set("LLM_BASE_URL", base_url)
-        SysConfigCRUD.set("LLM_MODEL", model)
+        update_env_file({
+            "LLM_API_KEY": api_key,
+            "LLM_BASE_URL": base_url,
+            "LLM_MODEL": model,
+        })
+        reload_settings()
         logger.info("API 设置已保存")
-        return "API 配置保存成功"
+        return "✓ API 配置保存成功, 已立即生效"
     except Exception as e:
         return f"保存失败: {e}"
 
@@ -81,41 +88,69 @@ def _save_api_settings(api_key, base_url, model):
 def _do_logout():
     """退出登录"""
     clear_cookie()
-    return "已退出登录, Cookie 已清除"
+    return "✓ 已退出登录, Cookie 已清除"
 
 
 def _do_wipe():
     """清除所有数据"""
     ok = wipe_all_data()
     if ok:
-        return "所有本地数据已清除 (不可恢复)"
+        return "✓ 所有本地数据已清除 (不可恢复)"
     return "数据清除失败"
 
 
 def create_settings_page():
     """创建系统设置页面"""
+    settings = get_settings()
+
     gr.Markdown("## 系统设置")
     settings_msg = gr.Textbox(label="操作结果", interactive=False, max_lines=1)
 
-    with gr.Tabs():
+    with gr.Tabs(elem_id="settings-tabs"):
+
         with gr.Tab("账号管理"):
             gr.Markdown("### 招聘平台账号")
             gr.Markdown("当前仅支持 BOSS 直聘平台 (V1.0)")
             with gr.Row():
-                gr.Button("退出登录", variant="stop").click(fn=_do_logout, outputs=[settings_msg])
+                gr.Button("退出登录", variant="stop").click(
+                    fn=_do_logout, outputs=[settings_msg]
+                )
                 gr.Button("重新登录 (扫码)", variant="primary")
-            gr.Markdown("> ⚠ 账号安全由用户自行负责, 禁止暴力投递")
+
+            gr.HTML(
+                '<div class="alert-bar" style="margin-top:16px;">'
+                "⚠ 账号安全由用户自行负责, 禁止暴力投递"
+                "</div>"
+            )
 
         with gr.Tab("投递风控"):
             gr.Markdown("### 风控参数设置")
-            max_daily = gr.Slider(1, 50, value=20, step=1, label="每日最大投递量")
+            max_daily = gr.Slider(
+                1, 50, value=settings.MAX_DAILY_DELIVERY,
+                step=1, label="每日最大投递量",
+            )
             with gr.Row():
-                min_delay = gr.Slider(1, 10, value=2, step=1, label="最小延时 (秒)")
-                max_delay = gr.Slider(1, 10, value=4, step=1, label="最大延时 (秒)")
+                min_delay = gr.Slider(
+                    1, 10, value=settings.MIN_DELAY_SECONDS,
+                    step=1, label="最小延时 (秒)",
+                )
+                max_delay = gr.Slider(
+                    1, 10, value=settings.MAX_DELAY_SECONDS,
+                    step=1, label="最大延时 (秒)",
+                )
             with gr.Row():
-                start_hour = gr.Slider(0, 23, value=9, step=1, label="投递开始时段")
-                end_hour = gr.Slider(0, 23, value=18, step=1, label="投递结束时段")
-            threshold = gr.Slider(0, 100, value=70, step=5, label="最低匹配分数阈值")
+                start_hour = gr.Slider(
+                    0, 23, value=settings.DELIVERY_START_HOUR,
+                    step=1, label="投递开始时段",
+                )
+                end_hour = gr.Slider(
+                    0, 23, value=settings.DELIVERY_END_HOUR,
+                    step=1, label="投递结束时段",
+                )
+            threshold = gr.Slider(
+                0, 100, value=settings.MATCH_THRESHOLD,
+                step=5, label="最低匹配分数阈值",
+            )
             gr.Button("保存风控设置", variant="primary").click(
                 fn=_save_risk_settings,
                 inputs=[max_daily, min_delay, max_delay, start_hour, end_hour, threshold],
@@ -124,33 +159,65 @@ def create_settings_page():
 
         with gr.Tab("大模型 API"):
             gr.Markdown("### 大模型配置")
-            gr.Markdown("支持 OpenAI / 通义千问 等兼容 OpenAI API 格式的大模型")
-            api_key = gr.Textbox(label="API Key", type="password", placeholder="sk-...")
-            base_url = gr.Textbox(label="API Base URL", value="https://api.openai.com/v1")
-            model = gr.Textbox(label="模型名称", value="gpt-4", placeholder="gpt-4 / qwen-plus / ...")
-            gr.Button("保存 API 配置", variant="primary").click(
-                fn=_save_api_settings, inputs=[api_key, base_url, model], outputs=[settings_msg]
+            gr.Markdown(
+                "支持 OpenAI / DeepSeek / 通义千问 等兼容 OpenAI API 格式的大模型服务"
             )
-            gr.Markdown("> API 密钥加密本地存储, 不上传云端")
+            api_key = gr.Textbox(
+                label="API Key",
+                type="password",
+                value=settings.LLM_API_KEY,
+                placeholder="sk-...",
+            )
+            base_url = gr.Textbox(
+                label="API Base URL",
+                value=settings.LLM_BASE_URL,
+                placeholder="https://api.openai.com/v1",
+            )
+            model = gr.Dropdown(
+                label="模型名称",
+                choices=[
+                    "deepseek-chat", "deepseek-reasoner",
+                    "gpt-4", "gpt-4o", "gpt-4o-mini", "gpt-3.5-turbo",
+                    "qwen-plus", "qwen-turbo", "qwen-max",
+                    "glm-4", "glm-4-flash",
+                ],
+                value=settings.LLM_MODEL,
+                allow_custom_value=True,
+            )
+            gr.Button("保存 API 配置", variant="primary").click(
+                fn=_save_api_settings,
+                inputs=[api_key, base_url, model],
+                outputs=[settings_msg],
+            )
+            gr.HTML(
+                '<div class="alert-bar info" style="margin-top:12px;">'
+                "API 密钥仅保存在本地 .env 文件, 不上传云端"
+                "</div>"
+            )
 
         with gr.Tab("数据与隐私"):
             gr.Markdown("### 数据管理")
             gr.Markdown("所有数据仅存储在本地设备, 不上传任何云端服务器。")
-            gr.Markdown("---")
-            gr.Markdown("⚠ **一键清理**: 将删除所有本地数据 (简历、投递记录、Cookie), 不可恢复!")
-            gr.Button("一键清理所有数据", variant="stop").click(fn=_do_wipe, outputs=[settings_msg])
+            gr.HTML('<div class="divider"></div>')
+            gr.HTML(
+                '<div class="alert-bar error">'
+                "⚠ 一键清理: 将删除所有本地数据 (简历、投递记录、Cookie), 不可恢复!"
+                "</div>"
+            )
+            gr.Button("一键清理所有数据", variant="stop").click(
+                fn=_do_wipe, outputs=[settings_msg]
+            )
 
         with gr.Tab("用户协议"):
             gr.Markdown(_USER_AGREEMENT)
 
         with gr.Tab("关于"):
-            settings = get_settings()
-            gr.Markdown(f"""### {settings.APP_NAME}
-- **版本**: V{settings.APP_VERSION}
-- **技术栈**: Python 3.11 + LangGraph + Playwright + Gradio
-- **定位**: 企业级 AI 多智能体求职辅助工具
-- **核心优势**: 安全合规、AI 智能优化、全流程可控、隐私本地化
-
----
-*AI 求职管家: 安全不封号, 精准拿面试*
-""")
+            gr.Markdown(
+                f"### {settings.APP_NAME}\n"
+                f"- **版本**: V{settings.APP_VERSION}\n"
+                f"- **技术栈**: Python 3.11 + LangGraph + Playwright + Gradio\n"
+                f"- **定位**: 企业级 AI 多智能体求职辅助工具\n"
+                f"- **核心优势**: 安全合规、AI 智能优化、全流程可控、隐私本地化\n\n"
+                f"---\n"
+                f"*AI 求职管家: 安全不封号, 精准拿面试*"
+            )

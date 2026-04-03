@@ -9,6 +9,7 @@
 
 from __future__ import annotations
 
+import io
 import logging
 import sys
 from logging.handlers import RotatingFileHandler
@@ -21,6 +22,13 @@ _MAX_BYTES = 10 * 1024 * 1024  # 10MB
 _BACKUP_COUNT = 5
 
 
+def _get_utf8_stream():
+    """获取 UTF-8 编码的 stdout 流（兼容 Windows GBK 终端）"""
+    if hasattr(sys.stdout, "buffer"):
+        return io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace", line_buffering=True)
+    return sys.stdout
+
+
 def get_logger(name: str = "ai_job_agent") -> logging.Logger:
     """获取统一日志器（同名Logger仅初始化一次）"""
     logger = logging.getLogger(name)
@@ -31,13 +39,11 @@ def get_logger(name: str = "ai_job_agent") -> logging.Logger:
     logger.setLevel(logging.DEBUG)
     formatter = logging.Formatter(fmt=_LOG_FORMAT, datefmt=_LOG_DATE_FORMAT)
 
-    # 控制台 Handler
-    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler = logging.StreamHandler(_get_utf8_stream())
     console_handler.setLevel(logging.INFO)
     console_handler.setFormatter(formatter)
     logger.addHandler(console_handler)
 
-    # 应用日志文件 Handler（全量 DEBUG）
     app_file_handler = RotatingFileHandler(
         LOG_DIR / "app.log",
         maxBytes=_MAX_BYTES,
@@ -48,7 +54,6 @@ def get_logger(name: str = "ai_job_agent") -> logging.Logger:
     app_file_handler.setFormatter(formatter)
     logger.addHandler(app_file_handler)
 
-    # 错误日志文件 Handler（仅 ERROR+）
     error_file_handler = RotatingFileHandler(
         LOG_DIR / "error.log",
         maxBytes=_MAX_BYTES,

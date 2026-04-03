@@ -1,11 +1,12 @@
 """JD 解析与岗位匹配页面
 
-JD 文本输入, 简历选择, 智能匹配打分, 差异项展示。
+双栏布局: 左输入 / 右结果, 纯CSS环形图展示匹配分, 标签化差异项。
 """
 
 from __future__ import annotations
 
 import json
+import math
 
 import gradio as gr
 
@@ -26,18 +27,75 @@ def _get_resume_choices() -> list[str]:
         return []
 
 
+def _render_score_ring(score: int) -> str:
+    """渲染纯CSS/SVG环形图"""
+    if score >= 85:
+        color, level = "#00B42A", "高匹配"
+    elif score >= 60:
+        color, level = "#FF7D00", "一般匹配"
+    else:
+        color, level = "#F53F3F", "低匹配"
+
+    r = 54
+    circumference = 2 * math.pi * r
+    offset = circumference - (circumference * score / 100)
+
+    return (
+        '<div class="ring-chart-wrap">'
+        '<div class="ring-chart">'
+        '<svg width="140" height="140" viewBox="0 0 140 140">'
+        f'<circle cx="70" cy="70" r="{r}" fill="none" stroke="#E5E6EB" stroke-width="12"/>'
+        f'<circle cx="70" cy="70" r="{r}" fill="none" stroke="{color}" stroke-width="12" '
+        f'stroke-dasharray="{circumference:.1f}" stroke-dashoffset="{offset:.1f}" '
+        f'stroke-linecap="round" '
+        f'style="transform:rotate(-90deg);transform-origin:70px 70px;"/>'
+        "</svg>"
+        '<div class="rt">'
+        f'<div class="rs" style="color:{color}">{score}</div>'
+        f'<div class="rl">{level}</div>'
+        "</div>"
+        "</div>"
+        "</div>"
+    )
+
+
+def _render_match_tags(match_items: list, missing_items: list, weak_items: list) -> str:
+    """渲染匹配/缺失/薄弱项标签"""
+    html = ""
+
+    if match_items:
+        html += '<div style="margin-bottom:16px;"><div style="font-size:13px;color:#86909C;margin-bottom:8px;">匹配项</div><div class="match-tags">'
+        for s in match_items:
+            html += f'<span class="match-tag hit">✓ {s}</span>'
+        html += "</div></div>"
+
+    if missing_items:
+        html += '<div style="margin-bottom:16px;"><div style="font-size:13px;color:#86909C;margin-bottom:8px;">缺失项</div><div class="match-tags">'
+        for s in missing_items:
+            html += f'<span class="match-tag miss">✗ {s}</span>'
+        html += "</div></div>"
+
+    if weak_items:
+        html += '<div style="margin-bottom:16px;"><div style="font-size:13px;color:#86909C;margin-bottom:8px;">薄弱项</div><div class="match-tags">'
+        for s in weak_items:
+            html += f'<span class="match-tag weak">! {s}</span>'
+        html += "</div></div>"
+
+    return html or '<div style="color:#86909C;padding:16px 0;">暂无匹配数据</div>'
+
+
 def _do_match(resume_choice, jd_text):
     """执行简历-JD匹配"""
     if not resume_choice:
-        return "请先选择简历", "", "", "", ""
+        return "", "请先选择简历", "", "", ""
     if not jd_text or len(jd_text.strip()) < 50:
-        return "JD 文本过短, 请输入至少 50 字的岗位描述", "", "", "", ""
+        return "", "JD 文本过短, 请输入至少 50 字的岗位描述", "", "", ""
 
     try:
         resume_id = int(resume_choice.split(":")[0])
         resume = ResumeCRUD.get_by_id(resume_id)
         if not resume:
-            return "简历不存在", "", "", "", ""
+            return "", "简历不存在", "", "", ""
 
         resume_struct = json.loads(resume.get("struct_data", "{}"))
         state = {
@@ -48,17 +106,10 @@ def _do_match(resume_choice, jd_text):
 
         result = jd_match_node(state)
         if result.get("error_code"):
-            return f"匹配失败: {result.get('error_msg')}", "", "", "", ""
+            return "", f"匹配失败: {result.get('error_msg')}", "", "", ""
 
         score = result.get("match_score", 0)
-        if score >= 85:
-            level = "🟢 高匹配"
-        elif score >= 60:
-            level = "🟡 一般匹配"
-        else:
-            level = "🔴 低匹配"
-
-        score_text = f"## 匹配分数: {score} 分 ({level})"
+        score_html = _render_score_ring(score)
 
         jd_struct = result.get("jd_struct", {})
         jd_info = (
@@ -72,24 +123,18 @@ def _do_match(resume_choice, jd_text):
         match_items = result.get("match_items", [])
         missing_items = result.get("missing_items", [])
         weak_items = result.get("weak_items", [])
+        tags_html = _render_match_tags(match_items, missing_items, weak_items)
 
-        diff_text = "### 匹配项\n"
-        diff_text += ", ".join(f"✅ {s}" for s in match_items) if match_items else "无"
-        diff_text += "\n\n### 缺失项\n"
-        diff_text += ", ".join(f"❌ {s}" for s in missing_items) if missing_items else "无"
-        diff_text += "\n\n### 薄弱项\n"
-        diff_text += "\n".join(f"⚠ {s}" for s in weak_items) if weak_items else "无"
-
-        feedback = "\n".join(f"- {f}" for f in result.get("match_feedback", []))
-
+        feedback_lines = result.get("match_feedback", [])
+        feedback = "\n".join(f"- {f}" for f in feedback_lines)
         threshold = get_settings().MATCH_THRESHOLD
         if score < threshold:
             feedback += f"\n\n⚠ 匹配分数低于阈值 ({threshold}), 建议优化简历后再投递"
 
-        return score_text, jd_info, diff_text, feedback, resume_choice
+        return score_html, jd_info, tags_html, feedback, resume_choice
     except Exception as e:
         logger.error("匹配异常: %s", e)
-        return f"匹配异常: {e}", "", "", "", ""
+        return "", f"匹配异常: {e}", "", "", ""
 
 
 def create_jd_match_page():
@@ -97,6 +142,7 @@ def create_jd_match_page():
     gr.Markdown("## JD 解析与岗位匹配")
 
     with gr.Row():
+        # 左栏: 输入区
         with gr.Column(scale=2):
             gr.Markdown("### 输入区")
             resume_dropdown = gr.Dropdown(
@@ -112,16 +158,19 @@ def create_jd_match_page():
             )
             match_btn = gr.Button("开始匹配", variant="primary", size="lg")
 
+        # 右栏: 结果区
         with gr.Column(scale=3):
             gr.Markdown("### 匹配结果")
-            score_display = gr.Markdown(value="等待匹配...")
+            score_display = gr.HTML(value='<div style="color:#86909C;padding:24px;text-align:center;">等待匹配...</div>')
             jd_info_display = gr.Markdown(value="")
-            diff_display = gr.Markdown(value="")
+            gr.Markdown("### 差异分析")
+            diff_display = gr.HTML(value="")
+            gr.Markdown("### 综合建议")
             feedback_display = gr.Markdown(value="")
             matched_resume = gr.Textbox(visible=False)
 
     refresh_resume_btn.click(
-        fn=lambda: gr.update(choices=_get_resume_choices()),
+        fn=lambda: gr.Dropdown(choices=_get_resume_choices()),
         outputs=[resume_dropdown],
     )
     match_btn.click(

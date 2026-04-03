@@ -1,6 +1,6 @@
 """AI 简历优化页面
 
-双栏对比展示, 优化建议, 求职信生成。
+岗位信息 → 双栏对比 → 优化建议 → 求职信, 商务极简。
 """
 
 from __future__ import annotations
@@ -30,7 +30,9 @@ def _do_optimize(resume_choice, jd_text):
             return "简历不存在", "", "", "", ""
 
         struct = json.loads(resume.get("struct_data", "{}"))
-        resume_text = struct.get("optimized_text", "") or json.dumps(struct, ensure_ascii=False, indent=2)
+        resume_text = struct.get("optimized_text", "") or json.dumps(
+            struct, ensure_ascii=False, indent=2
+        )
 
         state = {
             "resume_text": resume_text,
@@ -50,9 +52,11 @@ def _do_optimize(resume_choice, jd_text):
         suggestions = result.get("optimize_suggestions", [])
         cover_letter = result.get("cover_letter", "")
 
-        suggestion_text = "\n\n".join(f"**{i+1}. {s}**" for i, s in enumerate(suggestions))
+        suggestion_text = "\n\n".join(
+            f"**{i + 1}. {s}**" for i, s in enumerate(suggestions)
+        )
 
-        return "优化完成", resume_text, optimized, suggestion_text, cover_letter
+        return "✓ 优化完成", resume_text, optimized, suggestion_text, cover_letter
     except Exception as e:
         logger.error("简历优化异常: %s", e)
         return f"优化异常: {e}", "", "", "", ""
@@ -72,18 +76,27 @@ def create_optimize_page():
 
     with gr.Row():
         resume_dropdown = gr.Dropdown(
-            choices=_get_resume_choices(), label="选择简历", interactive=True, scale=2,
+            choices=_get_resume_choices(),
+            label="选择简历",
+            interactive=True,
+            scale=2,
         )
         gr.Button("刷新", size="sm", scale=0).click(
-            fn=lambda: gr.update(choices=_get_resume_choices()), outputs=[resume_dropdown]
+            fn=lambda: gr.Dropdown(choices=_get_resume_choices()),
+            outputs=[resume_dropdown],
         )
 
-    jd_text = gr.Textbox(label="JD 岗位描述 (用于针对性优化)", lines=5, placeholder="粘贴 JD 文本...")
+    jd_text = gr.Textbox(
+        label="JD 岗位描述 (用于针对性优化)",
+        lines=5,
+        placeholder="粘贴 JD 文本...",
+    )
     optimize_btn = gr.Button("一键优化", variant="primary", size="lg")
     status = gr.Textbox(label="状态", interactive=False, max_lines=1)
 
+    # 双栏对比
     gr.Markdown("### 优化对比")
-    with gr.Row():
+    with gr.Row(equal_height=True):
         with gr.Column():
             gr.Markdown("**原始简历**")
             original_text = gr.Textbox(label="原始内容", lines=15, interactive=False)
@@ -91,18 +104,36 @@ def create_optimize_page():
             gr.Markdown("**优化后简历**")
             optimized_text = gr.Textbox(label="优化内容", lines=15, interactive=True)
 
+    # 优化建议
     gr.Markdown("### 优化建议")
     suggestions_display = gr.Markdown(value="")
 
+    # 求职信
     gr.Markdown("### 求职信")
-    cover_letter_display = gr.Textbox(label="AI 生成求职信 (100~150字)", lines=6, interactive=True)
+    cover_letter_display = gr.Textbox(
+        label="AI 生成求职信 (100~150字)",
+        lines=6,
+        interactive=True,
+    )
 
     with gr.Row():
-        gr.Button("复制优化简历").click(fn=lambda t: t, inputs=[optimized_text], outputs=[optimized_text])
-        gr.Button("复制求职信").click(fn=lambda t: t, inputs=[cover_letter_display], outputs=[cover_letter_display])
+        gr.Button("复制优化简历", variant="secondary").click(
+            fn=lambda t: t, inputs=[optimized_text], outputs=[optimized_text]
+        )
+        gr.Button("复制求职信", variant="secondary").click(
+            fn=lambda t: t,
+            inputs=[cover_letter_display],
+            outputs=[cover_letter_display],
+        )
 
     optimize_btn.click(
         fn=_do_optimize,
         inputs=[resume_dropdown, jd_text],
-        outputs=[status, original_text, optimized_text, suggestions_display, cover_letter_display],
+        outputs=[
+            status,
+            original_text,
+            optimized_text,
+            suggestions_display,
+            cover_letter_display,
+        ],
     )

@@ -74,3 +74,29 @@ def reload_settings() -> Settings:
     """热更新配置（重新读取 .env）"""
     get_settings.cache_clear()
     return get_settings()
+
+
+def update_env_file(updates: dict[str, str]) -> None:
+    """将键值对写入 .env 文件，已有的 key 就地更新，没有的追加"""
+    env_path = BASE_DIR / ".env"
+    lines: list[str] = []
+    if env_path.exists():
+        lines = env_path.read_text(encoding="utf-8").splitlines(keepends=True)
+
+    updated_keys: set[str] = set()
+    new_lines: list[str] = []
+    for line in lines:
+        stripped = line.strip()
+        if stripped and not stripped.startswith("#") and "=" in stripped:
+            key = stripped.split("=", 1)[0].strip()
+            if key in updates:
+                new_lines.append(f"{key}={updates[key]}\n")
+                updated_keys.add(key)
+                continue
+        new_lines.append(line if line.endswith("\n") else line + "\n")
+
+    for key, value in updates.items():
+        if key not in updated_keys:
+            new_lines.append(f"{key}={value}\n")
+
+    env_path.write_text("".join(new_lines), encoding="utf-8")

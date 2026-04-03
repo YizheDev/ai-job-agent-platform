@@ -1,6 +1,7 @@
 """简历管理页面
 
 简历上传、解析、版本管理、预览、导出、删除。
+商务极简卡片布局。
 """
 
 from __future__ import annotations
@@ -40,7 +41,7 @@ def _upload_and_parse(file):
             f"**技能**: {', '.join(struct.get('skills', []))}",
         ]
         info_text = "\n".join(info_lines)
-        return "解析成功", info_text, _get_resume_list()
+        return "✓ 解析成功", info_text, _get_resume_list()
     except Exception as e:
         logger.error("简历上传失败: %s", e)
         return f"上传失败: {e}", "", _get_resume_list()
@@ -84,7 +85,11 @@ def _view_resume(selected_id):
         if struct.get("work_experience"):
             parts.append("\n**工作经历:**")
             for exp in struct["work_experience"]:
-                parts.append(f"  - {exp.get('company', '')} | {exp.get('position', '')} | {exp.get('duration', '')}")
+                parts.append(
+                    f"  - {exp.get('company', '')} | "
+                    f"{exp.get('position', '')} | "
+                    f"{exp.get('duration', '')}"
+                )
         return "\n".join(parts)
     except Exception as e:
         return f"查看失败: {e}"
@@ -98,7 +103,7 @@ def _delete_resume(selected_id):
         resume_id = int(selected_id)
         ok = ResumeCRUD.delete(resume_id)
         if ok:
-            return "删除成功", _get_resume_list()
+            return "✓ 删除成功", _get_resume_list()
         return "删除失败: 原始简历不可删除", _get_resume_list()
     except Exception as e:
         return f"删除失败: {e}", _get_resume_list()
@@ -110,7 +115,7 @@ def _set_default(selected_id):
         return "请选择简历", _get_resume_list()
     try:
         ResumeCRUD.set_default(int(selected_id))
-        return "已设为默认简历", _get_resume_list()
+        return "✓ 已设为默认简历", _get_resume_list()
     except Exception as e:
         return f"操作失败: {e}", _get_resume_list()
 
@@ -121,7 +126,11 @@ def create_resume_page():
 
     with gr.Row():
         with gr.Column(scale=2):
-            file_input = gr.File(label="上传简历 (PDF/DOCX, ≤10MB)", file_types=[".pdf", ".docx"])
+            gr.Markdown("### 上传简历")
+            file_input = gr.File(
+                label="选择文件 (PDF / DOCX, ≤10MB)",
+                file_types=[".pdf", ".docx"],
+            )
             upload_btn = gr.Button("上传并解析", variant="primary")
             status_msg = gr.Textbox(label="状态", interactive=False, max_lines=1)
             parse_result = gr.Markdown(label="解析结果", value="")
@@ -134,12 +143,13 @@ def create_resume_page():
                 value=_get_resume_list(),
                 interactive=False,
             )
-            selected_id = gr.Textbox(label="选择简历 ID", placeholder="输入简历 ID 进行操作")
+
+            selected_id = gr.Textbox(label="简历 ID", placeholder="输入简历 ID 进行操作")
             with gr.Row():
-                view_btn = gr.Button("查看详情")
-                default_btn = gr.Button("设为默认")
+                view_btn = gr.Button("查看详情", variant="secondary")
+                default_btn = gr.Button("设为默认", variant="secondary")
                 delete_btn = gr.Button("删除", variant="stop")
-                refresh_btn = gr.Button("刷新列表")
+                refresh_btn = gr.Button("刷新列表", variant="secondary")
 
             detail_display = gr.Markdown(value="")
 
