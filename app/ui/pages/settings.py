@@ -1,0 +1,156 @@
+"""系统设置页面
+
+账号管理、风控参数、大模型 API 配置、数据隐私、用户协议。
+"""
+
+from __future__ import annotations
+
+import gradio as gr
+
+from app.core.config import get_settings, reload_settings
+from app.core.logger import get_logger
+from app.db.crud import SysConfigCRUD
+from app.utils.security_util import clear_cookie, wipe_all_data
+
+logger = get_logger(__name__)
+
+_USER_AGREEMENT = """## 用户使用须知
+
+1. 本工具仅为个人求职辅助工具, 不代表任何招聘平台官方。
+2. 用户需严格遵守招聘平台用户协议, 不得违反平台规定。
+3. 因用户操作不当、违反平台规则导致的任何损失, 本工具不承担责任。
+4. 禁止用于商业代投、批量恶意投递。
+5. 用户需自行保管个人简历、账号信息, 因用户自身泄露导致的风险自行承担。
+
+## 免责声明
+
+1. 本工具仅提供技术辅助, 不保证投递成功、不保证账号不被风控。
+2. 因平台策略调整导致功能失效属正常现象, 本工具将逐步适配。
+3. 本工具仅本地存储用户数据, 不保证数据绝对安全, 用户需定期备份。
+4. 因设备故障、误操作导致的数据丢失, 本工具不承担责任。
+5. 所有投递行为由用户发起并确认, 求职结果由用户自身条件和招聘方决定。
+"""
+
+
+def _load_settings():
+    """加载当前设置"""
+    try:
+        settings = get_settings()
+        return (
+            settings.MAX_DAILY_DELIVERY,
+            settings.MIN_DELAY_SECONDS,
+            settings.MAX_DELAY_SECONDS,
+            settings.DELIVERY_START_HOUR,
+            settings.DELIVERY_END_HOUR,
+            settings.MATCH_THRESHOLD,
+            settings.LLM_API_KEY[:8] + "..." if len(settings.LLM_API_KEY) > 8 else settings.LLM_API_KEY,
+            settings.LLM_BASE_URL,
+            settings.LLM_MODEL,
+        )
+    except Exception as e:
+        return 20, 2, 4, 9, 18, 70, "", "", ""
+
+
+def _save_risk_settings(max_daily, min_delay, max_delay, start_hour, end_hour, threshold):
+    """保存风控设置"""
+    try:
+        SysConfigCRUD.set("MAX_DAILY_DELIVERY", str(int(max_daily)))
+        SysConfigCRUD.set("MIN_DELAY_SECONDS", str(int(min_delay)))
+        SysConfigCRUD.set("MAX_DELAY_SECONDS", str(int(max_delay)))
+        SysConfigCRUD.set("DELIVERY_START_HOUR", str(int(start_hour)))
+        SysConfigCRUD.set("DELIVERY_END_HOUR", str(int(end_hour)))
+        SysConfigCRUD.set("MATCH_THRESHOLD", str(int(threshold)))
+        logger.info("风控设置已保存")
+        return "风控设置保存成功"
+    except Exception as e:
+        return f"保存失败: {e}"
+
+
+def _save_api_settings(api_key, base_url, model):
+    """保存 API 设置"""
+    try:
+        SysConfigCRUD.set("LLM_API_KEY", api_key)
+        SysConfigCRUD.set("LLM_BASE_URL", base_url)
+        SysConfigCRUD.set("LLM_MODEL", model)
+        logger.info("API 设置已保存")
+        return "API 配置保存成功"
+    except Exception as e:
+        return f"保存失败: {e}"
+
+
+def _do_logout():
+    """退出登录"""
+    clear_cookie()
+    return "已退出登录, Cookie 已清除"
+
+
+def _do_wipe():
+    """清除所有数据"""
+    ok = wipe_all_data()
+    if ok:
+        return "所有本地数据已清除 (不可恢复)"
+    return "数据清除失败"
+
+
+def create_settings_page():
+    """创建系统设置页面"""
+    gr.Markdown("## 系统设置")
+    settings_msg = gr.Textbox(label="操作结果", interactive=False, max_lines=1)
+
+    with gr.Tabs():
+        with gr.Tab("账号管理"):
+            gr.Markdown("### 招聘平台账号")
+            gr.Markdown("当前仅支持 BOSS 直聘平台 (V1.0)")
+            with gr.Row():
+                gr.Button("退出登录", variant="stop").click(fn=_do_logout, outputs=[settings_msg])
+                gr.Button("重新登录 (扫码)", variant="primary")
+            gr.Markdown("> ⚠ 账号安全由用户自行负责, 禁止暴力投递")
+
+        with gr.Tab("投递风控"):
+            gr.Markdown("### 风控参数设置")
+            max_daily = gr.Slider(1, 50, value=20, step=1, label="每日最大投递量")
+            with gr.Row():
+                min_delay = gr.Slider(1, 10, value=2, step=1, label="最小延时 (秒)")
+                max_delay = gr.Slider(1, 10, value=4, step=1, label="最大延时 (秒)")
+            with gr.Row():
+                start_hour = gr.Slider(0, 23, value=9, step=1, label="投递开始时段")
+                end_hour = gr.Slider(0, 23, value=18, step=1, label="投递结束时段")
+            threshold = gr.Slider(0, 100, value=70, step=5, label="最低匹配分数阈值")
+            gr.Button("保存风控设置", variant="primary").click(
+                fn=_save_risk_settings,
+                inputs=[max_daily, min_delay, max_delay, start_hour, end_hour, threshold],
+                outputs=[settings_msg],
+            )
+
+        with gr.Tab("大模型 API"):
+            gr.Markdown("### 大模型配置")
+            gr.Markdown("支持 OpenAI / 通义千问 等兼容 OpenAI API 格式的大模型")
+            api_key = gr.Textbox(label="API Key", type="password", placeholder="sk-...")
+            base_url = gr.Textbox(label="API Base URL", value="https://api.openai.com/v1")
+            model = gr.Textbox(label="模型名称", value="gpt-4", placeholder="gpt-4 / qwen-plus / ...")
+            gr.Button("保存 API 配置", variant="primary").click(
+                fn=_save_api_settings, inputs=[api_key, base_url, model], outputs=[settings_msg]
+            )
+            gr.Markdown("> API 密钥加密本地存储, 不上传云端")
+
+        with gr.Tab("数据与隐私"):
+            gr.Markdown("### 数据管理")
+            gr.Markdown("所有数据仅存储在本地设备, 不上传任何云端服务器。")
+            gr.Markdown("---")
+            gr.Markdown("⚠ **一键清理**: 将删除所有本地数据 (简历、投递记录、Cookie), 不可恢复!")
+            gr.Button("一键清理所有数据", variant="stop").click(fn=_do_wipe, outputs=[settings_msg])
+
+        with gr.Tab("用户协议"):
+            gr.Markdown(_USER_AGREEMENT)
+
+        with gr.Tab("关于"):
+            settings = get_settings()
+            gr.Markdown(f"""### {settings.APP_NAME}
+- **版本**: V{settings.APP_VERSION}
+- **技术栈**: Python 3.11 + LangGraph + Playwright + Gradio
+- **定位**: 企业级 AI 多智能体求职辅助工具
+- **核心优势**: 安全合规、AI 智能优化、全流程可控、隐私本地化
+
+---
+*AI 求职管家: 安全不封号, 精准拿面试*
+""")

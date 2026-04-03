@@ -1,0 +1,38 @@
+# ============================================================
+# AI求职智能管家 - 依赖清单
+# 环境: Anaconda3 + Python 3.11
+# 安装: pip install -r requirements.txt
+# ============================================================
+
+# --- 多智能体编排 ---
+langgraph>=0.3.0
+langchain>=0.3.0
+langchain-openai>=0.3.0
+langchain-community>=0.3.0
+
+# --- 浏览器自动化 ---
+playwright>=1.48.0
+browser-use>=0.1.40
+
+# --- 简历解析（python-docx + PyPDF2 替代 pyresume） ---
+python-docx>=1.1.0
+PyPDF2>=3.0.1
+
+# --- 数据校验与配置 ---
+pydantic>=2.9.0
+pydantic-settings>=2.6.0
+python-dotenv>=1.0.1
+
+# --- 前端UI ---
+gradio>=5.6.0
+
+# --- 加密安全 ---
+cryptography>=43.0.0
+
+# --- 数据导出 ---
+openpyxl>=3.1.5
+
+# --- 开发与测试工具 ---
+ruff>=0.8.0
+pytest>=8.3.0
+pytest-asyncio>=0.24.0

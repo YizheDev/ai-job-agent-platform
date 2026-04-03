@@ -1,0 +1,67 @@
+# ===== Python =====
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+*.egg
+dist/
+build/
+eggs/
+*.whl
+*.tar.gz
+.eggs/
+develop-eggs/
+
+# ===== 虚拟环境 =====
+.venv/
+venv/
+env/
+ENV/
+
+# ===== 本地配置（含敏感信息，禁止上传） =====
+.env
+
+# ===== IDE =====
+.idea/
+.vscode/
+*.swp
+*.swo
+*.sublime-project
+*.sublime-workspace
+
+# ===== 项目数据目录（含用户隐私数据，禁止上传） =====
+data/
+logs/
+
+# ===== 数据库 =====
+*.db
+*.sqlite
+*.sqlite3
+
+# ===== 操作系统 =====
+.DS_Store
+Thumbs.db
+Desktop.ini
+ehthumbs.db
+
+# ===== 测试与覆盖率 =====
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+
+# ===== Ruff =====
+.ruff_cache/
+
+# ===== 分发打包 =====
+*.spec
+*.exe
+*.app
+
+# ===== 临时文件 =====
+*.tmp
+*.bak
+*.log
+0.2.0
