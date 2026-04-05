@@ -2,6 +2,7 @@
 
 定义所有数据表结构，提供数据库连接与初始化功能。
 严格遵循技术设计文档的表结构定义。
+支持 user_name 字段实现多用户数据隔离。
 """
 
 from __future__ import annotations
@@ -17,6 +18,7 @@ CREATE_TABLES_SQL = """
 -- 简历表
 CREATE TABLE IF NOT EXISTS resume (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_name       TEXT    DEFAULT '',
     file_name       TEXT    NOT NULL,
     file_path       TEXT    NOT NULL,
     file_type       TEXT    NOT NULL CHECK(file_type IN ('pdf', 'docx')),
@@ -35,6 +37,7 @@ CREATE TABLE IF NOT EXISTS resume (
 -- 投递记录表
 CREATE TABLE IF NOT EXISTS delivery_record (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_name       TEXT    DEFAULT '',
     company         TEXT    NOT NULL,
     position        TEXT    NOT NULL,
     position_url    TEXT    NOT NULL,
@@ -56,11 +59,13 @@ CREATE TABLE IF NOT EXISTS delivery_record (
 -- 系统配置表
 CREATE TABLE IF NOT EXISTS sys_config (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    config_key      TEXT    NOT NULL UNIQUE,
+    user_name       TEXT    DEFAULT '',
+    config_key      TEXT    NOT NULL,
     config_value    TEXT    NOT NULL DEFAULT '',
     description     TEXT    DEFAULT '',
     create_time     TEXT    NOT NULL DEFAULT (datetime('now', 'localtime')),
-    update_time     TEXT    NOT NULL DEFAULT (datetime('now', 'localtime'))
+    update_time     TEXT    NOT NULL DEFAULT (datetime('now', 'localtime')),
+    UNIQUE(user_name, config_key)
 );
 
 -- 异常日志表
@@ -78,6 +83,7 @@ CREATE TABLE IF NOT EXISTS exception_log (
 -- JD匹配记录表
 CREATE TABLE IF NOT EXISTS jd_match_record (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_name       TEXT    DEFAULT '',
     resume_id       INTEGER,
     jd_text         TEXT    NOT NULL,
     jd_struct       TEXT    DEFAULT '{}',
@@ -101,11 +107,58 @@ def get_connection() -> sqlite3.Connection:
     return conn
 
 
+def _migrate_add_user_name(conn: sqlite3.Connection) -> None:
+    """为现有数据库添加 user_name 列以支持多用户数据隔离。
+
+    仅在旧表缺少 user_name 列时执行, 新建库跳过。
+    """
+    cursor = conn.execute("PRAGMA table_info(resume)")
+    columns = [row[1] for row in cursor.fetchall()]
+
+    if "user_name" in columns:
+        return
+
+    logger.info("数据库迁移: 添加 user_name 列...")
+
+    for table in ("resume", "delivery_record", "jd_match_record"):
+        try:
+            conn.execute(
+                f"ALTER TABLE {table} ADD COLUMN user_name TEXT DEFAULT ''"
+            )
+        except sqlite3.OperationalError:
+            pass
+
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS sys_config_new (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_name       TEXT    DEFAULT '',
+            config_key      TEXT    NOT NULL,
+            config_value    TEXT    NOT NULL DEFAULT '',
+            description     TEXT    DEFAULT '',
+            create_time     TEXT    NOT NULL DEFAULT (datetime('now', 'localtime')),
+            update_time     TEXT    NOT NULL DEFAULT (datetime('now', 'localtime')),
+            UNIQUE(user_name, config_key)
+        )
+    """)
+    conn.execute("""
+        INSERT OR IGNORE INTO sys_config_new
+            (user_name, config_key, config_value, description, create_time, update_time)
+        SELECT '', config_key, config_value, description, create_time, update_time
+        FROM sys_config
+    """)
+    conn.execute("DROP TABLE sys_config")
+    conn.execute("ALTER TABLE sys_config_new RENAME TO sys_config")
+
+    conn.commit()
+    logger.info("数据库迁移完成: user_name 列已添加")
+
+
 def init_database() -> None:
     """初始化数据库（创建所有表，幂等操作）"""
     try:
         conn = get_connection()
         conn.executescript(CREATE_TABLES_SQL)
+        _migrate_add_user_name(conn)
         conn.commit()
         conn.close()
         logger.info("数据库初始化成功: %s", DB_PATH)

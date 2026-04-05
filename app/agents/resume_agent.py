@@ -200,6 +200,7 @@ def parse_resume_node(state: JobAgentState) -> dict:
             file_type=suffix.lstrip("."),
             file_size=path.stat().st_size,
             struct_data=json.dumps(struct, ensure_ascii=False),
+            user_name=state.get("user_name", ""),
         )
 
         logger.info("简历解析成功: name=%s, skills=%s", struct.get("name", ""), struct.get("skills", []))

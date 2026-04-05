@@ -210,6 +210,7 @@ def jd_match_node(state: JobAgentState) -> dict:
                 match_items=json.dumps(match_items, ensure_ascii=False),
                 missing_items=json.dumps(missing_items, ensure_ascii=False),
                 weak_items=json.dumps(weak_items, ensure_ascii=False),
+                user_name=state.get("user_name", ""),
             )
 
         logger.info("匹配完成: score=%d, matched=%d, missing=%d, weak=%d",

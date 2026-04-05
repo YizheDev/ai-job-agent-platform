@@ -23,6 +23,31 @@ from app.db.models import init_database
 
 logger = get_logger("main")
 
+SERVER_PORT = 7860
+
+
+def _kill_port(port: int) -> None:
+    """终止占用指定端口的进程 (仅 Windows)"""
+    if sys.platform != "win32":
+        return
+    import subprocess
+    try:
+        result = subprocess.run(
+            ["netstat", "-ano"],
+            capture_output=True, text=True, timeout=5,
+        )
+        for line in result.stdout.splitlines():
+            if f"127.0.0.1:{port}" in line and "LISTENING" in line:
+                pid = line.strip().split()[-1]
+                if pid.isdigit() and int(pid) != 0:
+                    subprocess.run(
+                        ["taskkill", "/PID", pid, "/F"],
+                        capture_output=True, timeout=5,
+                    )
+                    logger.info("已终止占用端口 %d 的进程 (PID %s)", port, pid)
+    except Exception as e:
+        logger.warning("释放端口失败: %s", e)
+
 
 def main():
     """主启动函数"""
@@ -43,16 +68,19 @@ def main():
         logger.warning("工作流初始化跳过 (非必需): %s", e)
 
     logger.info("[3/3] 启动 Gradio UI...")
-    from app.ui.app import create_app
+    from app.ui.app import create_app, APP_THEME, APP_CSS
     app = create_app()
 
     logger.info("所有模块初始化完成, 正在启动服务...")
+    _kill_port(SERVER_PORT)
     app.launch(
         server_name="127.0.0.1",
-        server_port=7860,
+        server_port=SERVER_PORT,
         share=False,
         inbrowser=True,
         show_error=True,
+        theme=APP_THEME,
+        css=APP_CSS,
     )
 
 

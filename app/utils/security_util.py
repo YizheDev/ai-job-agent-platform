@@ -17,8 +17,13 @@ from app.core.logger import get_logger
 
 logger = get_logger(__name__)
 
-_COOKIE_FILE = DATA_DIR / ".cookies.enc"
 _KEY_FILE = DATA_DIR / ".keyfile"
+
+
+def _cookie_path(name: str = "default") -> Path:
+    if name == "default":
+        return DATA_DIR / ".cookies.enc"
+    return DATA_DIR / f".cookies_{name}.enc"
 
 
 def generate_encryption_key() -> str:
@@ -69,32 +74,34 @@ def decrypt_data(encrypted: str) -> str:
         raise EncryptionError(details=f"解密失败: {e}")
 
 
-def save_cookie(cookie_data: dict) -> None:
-    """加密保存 Cookie"""
+def save_cookie(cookie_data, name: str = "default") -> None:
+    """加密保存 Cookie (支持命名，不同平台独立存储)"""
     raw = json.dumps(cookie_data, ensure_ascii=False)
     encrypted = encrypt_data(raw)
-    _COOKIE_FILE.write_text(encrypted, encoding="utf-8")
-    logger.info("Cookie 已加密保存")
+    _cookie_path(name).write_text(encrypted, encoding="utf-8")
+    logger.info("Cookie 已加密保存 (%s)", name)
 
 
-def load_cookie() -> dict | None:
+def load_cookie(name: str = "default"):
     """加载解密 Cookie"""
-    if not _COOKIE_FILE.exists():
+    path = _cookie_path(name)
+    if not path.exists():
         return None
     try:
-        encrypted = _COOKIE_FILE.read_text(encoding="utf-8")
+        encrypted = path.read_text(encoding="utf-8")
         raw = decrypt_data(encrypted)
         return json.loads(raw)
     except Exception as e:
-        logger.warning("Cookie 加载失败: %s", e)
+        logger.warning("Cookie 加载失败 (%s): %s", name, e)
         return None
 
 
-def clear_cookie() -> None:
+def clear_cookie(name: str = "default") -> None:
     """清除 Cookie"""
-    if _COOKIE_FILE.exists():
-        _COOKIE_FILE.unlink()
-        logger.info("Cookie 已清除")
+    path = _cookie_path(name)
+    if path.exists():
+        path.unlink()
+        logger.info("Cookie 已清除 (%s)", name)
 
 
 def mask_sensitive(text: str, keep_start: int = 3, keep_end: int = 4) -> str:

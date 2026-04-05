@@ -1,6 +1,6 @@
 """系统设置页面
 
-账号管理、风控参数、大模型 API 配置、数据隐私、用户协议。
+风控参数、大模型 API 配置、数据隐私、用户协议。
 使用标签页子导航, 商务极简表单。
 """
 
@@ -10,8 +10,7 @@ import gradio as gr
 
 from app.core.config import get_settings, reload_settings, update_env_file
 from app.core.logger import get_logger
-from app.db.crud import SysConfigCRUD
-from app.utils.security_util import clear_cookie, wipe_all_data
+from app.utils.security_util import wipe_all_data
 
 logger = get_logger(__name__)
 
@@ -85,12 +84,6 @@ def _save_api_settings(api_key, base_url, model):
         return f"保存失败: {e}"
 
 
-def _do_logout():
-    """退出登录"""
-    clear_cookie()
-    return "✓ 已退出登录, Cookie 已清除"
-
-
 def _do_wipe():
     """清除所有数据"""
     ok = wipe_all_data()
@@ -107,21 +100,6 @@ def create_settings_page():
     settings_msg = gr.Textbox(label="操作结果", interactive=False, max_lines=1)
 
     with gr.Tabs(elem_id="settings-tabs"):
-
-        with gr.Tab("账号管理"):
-            gr.Markdown("### 招聘平台账号")
-            gr.Markdown("当前仅支持 BOSS 直聘平台 (V1.0)")
-            with gr.Row():
-                gr.Button("退出登录", variant="stop").click(
-                    fn=_do_logout, outputs=[settings_msg]
-                )
-                gr.Button("重新登录 (扫码)", variant="primary")
-
-            gr.HTML(
-                '<div class="alert-bar" style="margin-top:16px;">'
-                "⚠ 账号安全由用户自行负责, 禁止暴力投递"
-                "</div>"
-            )
 
         with gr.Tab("投递风控"):
             gr.Markdown("### 风控参数设置")

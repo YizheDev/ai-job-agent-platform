@@ -1,7 +1,7 @@
 """简历管理页面
 
 简历上传、解析、版本管理、预览、导出、删除。
-商务极简卡片布局。
+商务极简卡片布局。通过 login_state 实现数据隔离。
 """
 
 from __future__ import annotations
@@ -18,39 +18,10 @@ from app.utils.file_util import format_file_size, save_uploaded_file
 logger = get_logger(__name__)
 
 
-def _upload_and_parse(file):
-    """上传并解析简历"""
-    if file is None:
-        return "请选择文件", "", []
-
+def _get_resume_list(user_name: str = ""):
+    """获取当前用户的简历列表数据"""
     try:
-        saved_path = save_uploaded_file(file.name if hasattr(file, "name") else str(file))
-        state = {"resume_path": saved_path}
-        result = parse_resume_node(state)
-
-        if result.get("error_code"):
-            return f"解析失败: {result.get('error_msg', '')}", "", _get_resume_list()
-
-        struct = result.get("resume_struct", {})
-        info_lines = [
-            f"**姓名**: {struct.get('name', '未提取')}",
-            f"**手机**: {struct.get('phone', '未提取')}",
-            f"**邮箱**: {struct.get('email', '未提取')}",
-            f"**学历**: {struct.get('education', '未提取')}",
-            f"**工作年限**: {struct.get('experience_years', 0)} 年",
-            f"**技能**: {', '.join(struct.get('skills', []))}",
-        ]
-        info_text = "\n".join(info_lines)
-        return "✓ 解析成功", info_text, _get_resume_list()
-    except Exception as e:
-        logger.error("简历上传失败: %s", e)
-        return f"上传失败: {e}", "", _get_resume_list()
-
-
-def _get_resume_list():
-    """获取简历列表数据"""
-    try:
-        resumes = ResumeCRUD.get_all()
+        resumes = ResumeCRUD.get_all(user_name=user_name)
         return [
             [
                 r["id"],
@@ -66,61 +37,7 @@ def _get_resume_list():
         return []
 
 
-def _view_resume(selected_id):
-    """查看简历详情"""
-    if not selected_id:
-        return "请选择简历"
-    try:
-        resume_id = int(selected_id)
-        resume = ResumeCRUD.get_by_id(resume_id)
-        if not resume:
-            return "简历不存在"
-        struct = json.loads(resume.get("struct_data", "{}"))
-        parts = [f"### {resume['file_name']}"]
-        for key, label in [("name", "姓名"), ("phone", "手机"), ("email", "邮箱"),
-                           ("education", "学历"), ("experience_years", "工作年限")]:
-            parts.append(f"- **{label}**: {struct.get(key, '未知')}")
-        if struct.get("skills"):
-            parts.append(f"- **技能**: {', '.join(struct['skills'])}")
-        if struct.get("work_experience"):
-            parts.append("\n**工作经历:**")
-            for exp in struct["work_experience"]:
-                parts.append(
-                    f"  - {exp.get('company', '')} | "
-                    f"{exp.get('position', '')} | "
-                    f"{exp.get('duration', '')}"
-                )
-        return "\n".join(parts)
-    except Exception as e:
-        return f"查看失败: {e}"
-
-
-def _delete_resume(selected_id):
-    """删除简历"""
-    if not selected_id:
-        return "请选择简历", _get_resume_list()
-    try:
-        resume_id = int(selected_id)
-        ok = ResumeCRUD.delete(resume_id)
-        if ok:
-            return "✓ 删除成功", _get_resume_list()
-        return "删除失败: 原始简历不可删除", _get_resume_list()
-    except Exception as e:
-        return f"删除失败: {e}", _get_resume_list()
-
-
-def _set_default(selected_id):
-    """设置默认简历"""
-    if not selected_id:
-        return "请选择简历", _get_resume_list()
-    try:
-        ResumeCRUD.set_default(int(selected_id))
-        return "✓ 已设为默认简历", _get_resume_list()
-    except Exception as e:
-        return f"操作失败: {e}", _get_resume_list()
-
-
-def create_resume_page():
+def create_resume_page(login_state):
     """创建简历管理页面"""
     gr.Markdown("## 简历管理")
 
@@ -140,21 +57,128 @@ def create_resume_page():
             resume_table = gr.Dataframe(
                 headers=["ID", "文件名", "格式", "类型", "默认", "创建时间"],
                 datatype=["number", "str", "str", "str", "str", "str"],
-                value=_get_resume_list(),
+                value=[],
                 interactive=False,
             )
 
-            selected_id = gr.Textbox(label="简历 ID", placeholder="输入简历 ID 进行操作")
+            selected_id = gr.Textbox(
+                label="已选简历 ID (点击表格行自动填入)",
+                placeholder="点击上方表格任意行选中",
+                interactive=True,
+            )
             with gr.Row():
-                view_btn = gr.Button("查看详情", variant="secondary")
-                default_btn = gr.Button("设为默认", variant="secondary")
-                delete_btn = gr.Button("删除", variant="stop")
-                refresh_btn = gr.Button("刷新列表", variant="secondary")
+                view_btn = gr.Button("查看详情", variant="secondary", scale=1)
+                default_btn = gr.Button("设为默认", variant="secondary", scale=1)
+                delete_btn = gr.Button("删除", variant="stop", scale=1)
+                refresh_btn = gr.Button("刷新列表", variant="secondary", scale=1)
 
             detail_display = gr.Markdown(value="")
 
-    upload_btn.click(fn=_upload_and_parse, inputs=[file_input], outputs=[status_msg, parse_result, resume_table])
+    # ---- 回调 (闭包捕获 login_state) ----
+
+    def _upload_and_parse(file, state):
+        user_name = state.get("user_name", "") if state else ""
+        if file is None:
+            return "请选择文件", "", _get_resume_list(user_name)
+        try:
+            saved_path = save_uploaded_file(file.name if hasattr(file, "name") else str(file))
+            agent_state = {"resume_path": saved_path, "user_name": user_name}
+            result = parse_resume_node(agent_state)
+            if result.get("error_code"):
+                return f"解析失败: {result.get('error_msg', '')}", "", _get_resume_list(user_name)
+            struct = result.get("resume_struct", {})
+            info_lines = [
+                f"**姓名**: {struct.get('name', '未提取')}",
+                f"**手机**: {struct.get('phone', '未提取')}",
+                f"**邮箱**: {struct.get('email', '未提取')}",
+                f"**学历**: {struct.get('education', '未提取')}",
+                f"**工作年限**: {struct.get('experience_years', 0)} 年",
+                f"**技能**: {', '.join(struct.get('skills', []))}",
+            ]
+            return "✓ 解析成功", "\n".join(info_lines), _get_resume_list(user_name)
+        except Exception as e:
+            logger.error("简历上传失败: %s", e)
+            return f"上传失败: {e}", "", _get_resume_list(user_name)
+
+    def _view_resume(sel_id):
+        if not sel_id:
+            return "请选择简历"
+        try:
+            resume = ResumeCRUD.get_by_id(int(sel_id))
+            if not resume:
+                return "简历不存在"
+            struct = json.loads(resume.get("struct_data", "{}"))
+            parts = [f"### {resume['file_name']}"]
+            for key, label in [("name", "姓名"), ("phone", "手机"), ("email", "邮箱"),
+                               ("education", "学历"), ("experience_years", "工作年限")]:
+                parts.append(f"- **{label}**: {struct.get(key, '未知')}")
+            if struct.get("skills"):
+                parts.append(f"- **技能**: {', '.join(struct['skills'])}")
+            if struct.get("work_experience"):
+                parts.append("\n**工作经历:**")
+                for exp in struct["work_experience"]:
+                    parts.append(
+                        f"  - {exp.get('company', '')} | "
+                        f"{exp.get('position', '')} | "
+                        f"{exp.get('duration', '')}"
+                    )
+            return "\n".join(parts)
+        except Exception as e:
+            return f"查看失败: {e}"
+
+    def _delete_resume(sel_id, state):
+        user_name = state.get("user_name", "") if state else ""
+        if not sel_id:
+            return "请选择简历", _get_resume_list(user_name)
+        try:
+            ok = ResumeCRUD.delete(int(sel_id))
+            if ok:
+                return "✓ 删除成功", _get_resume_list(user_name)
+            return "删除失败", _get_resume_list(user_name)
+        except Exception as e:
+            return f"删除失败: {e}", _get_resume_list(user_name)
+
+    def _set_default(sel_id, state):
+        user_name = state.get("user_name", "") if state else ""
+        if not sel_id:
+            return "请选择简历", _get_resume_list(user_name)
+        try:
+            ResumeCRUD.set_default(int(sel_id), user_name=user_name)
+            return "✓ 已设为默认简历", _get_resume_list(user_name)
+        except Exception as e:
+            return f"操作失败: {e}", _get_resume_list(user_name)
+
+    def _refresh_list(state):
+        user_name = state.get("user_name", "") if state else ""
+        return _get_resume_list(user_name)
+
+    def _on_row_select(evt: gr.SelectData, state):
+        user_name = state.get("user_name", "") if state else ""
+        try:
+            data = _get_resume_list(user_name)
+            row_idx = evt.index[0] if isinstance(evt.index, (list, tuple)) else evt.index
+            if 0 <= row_idx < len(data):
+                return str(data[row_idx][0])
+        except Exception:
+            pass
+        return ""
+
+    # ---- 事件绑定 ----
+    resume_table.select(fn=_on_row_select, inputs=[login_state], outputs=[selected_id])
+    upload_btn.click(
+        fn=_upload_and_parse,
+        inputs=[file_input, login_state],
+        outputs=[status_msg, parse_result, resume_table],
+    )
     view_btn.click(fn=_view_resume, inputs=[selected_id], outputs=[detail_display])
-    delete_btn.click(fn=_delete_resume, inputs=[selected_id], outputs=[status_msg, resume_table])
-    default_btn.click(fn=_set_default, inputs=[selected_id], outputs=[status_msg, resume_table])
-    refresh_btn.click(fn=lambda: _get_resume_list(), outputs=[resume_table])
+    delete_btn.click(
+        fn=_delete_resume,
+        inputs=[selected_id, login_state],
+        outputs=[status_msg, resume_table],
+    )
+    default_btn.click(
+        fn=_set_default,
+        inputs=[selected_id, login_state],
+        outputs=[status_msg, resume_table],
+    )
+    refresh_btn.click(fn=_refresh_list, inputs=[login_state], outputs=[resume_table])

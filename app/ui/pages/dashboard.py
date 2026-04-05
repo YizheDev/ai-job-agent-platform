@@ -2,6 +2,7 @@
 
 数据概览卡片 → 风险提示 → 快捷操作 → 最近投递记录。
 纯CSS渲染, 零图片, 企业级SaaS风格。
+通过 login_state 获取 user_name 实现数据隔离。
 """
 
 from __future__ import annotations
@@ -28,25 +29,34 @@ _STATUS_MAP = {
 
 
 def _render_data_cards(remaining: int, today: int, total: int, avg: float) -> str:
-    """渲染四宫格数据卡片 HTML"""
+    """渲染四宫格数据卡片 HTML (含图标 + 渐变标识)"""
     return (
         '<div class="data-cards">'
+
         '<div class="data-card">'
+        '<div class="dc-icon blue">📬</div>'
         '<div class="dc-label">今日可投递额度</div>'
         f'<div class="dc-value blue">{remaining}</div>'
         "</div>"
+
         '<div class="data-card">'
+        '<div class="dc-icon orange">🚀</div>'
         '<div class="dc-label">今日已投递</div>'
         f'<div class="dc-value">{today}</div>'
         "</div>"
+
         '<div class="data-card">'
+        '<div class="dc-icon gray">📊</div>'
         '<div class="dc-label">累计投递总数</div>'
         f'<div class="dc-value">{total}</div>'
         "</div>"
+
         '<div class="data-card">'
+        '<div class="dc-icon green">⭐</div>'
         '<div class="dc-label">近7日平均匹配分</div>'
         f'<div class="dc-value green">{avg:.1f}</div>'
         "</div>"
+
         "</div>"
     )
 
@@ -84,16 +94,16 @@ def _render_recent_table(records: list) -> str:
     return header + rows + "</tbody></table>"
 
 
-def _load_dashboard_data():
-    """加载工作台全部数据, 返回三段 HTML"""
+def load_dashboard_data(user_name: str = ""):
+    """加载工作台全部数据, 返回三段 HTML (供 app.py 调用)"""
     try:
         settings = get_settings()
-        today_count = DeliveryRecordCRUD.get_today_count()
-        total_count = DeliveryRecordCRUD.get_total_count()
-        avg_score = DeliveryRecordCRUD.get_avg_score(7)
+        today_count = DeliveryRecordCRUD.get_today_count(user_name=user_name)
+        total_count = DeliveryRecordCRUD.get_total_count(user_name=user_name)
+        avg_score = DeliveryRecordCRUD.get_avg_score(7, user_name=user_name)
         remaining = max(0, settings.MAX_DAILY_DELIVERY - today_count)
 
-        recent = DeliveryRecordCRUD.get_recent(5)
+        recent = DeliveryRecordCRUD.get_recent(5, user_name=user_name)
         table_rows = [
             [r["company"], r["position"], r["match_score"], r["create_time"], r["status"]]
             for r in recent
@@ -123,34 +133,40 @@ def _load_dashboard_data():
         )
 
 
-def create_dashboard_page():
-    """创建工作台页面"""
+def create_dashboard_page(login_state):
+    """创建工作台页面
+
+    Returns:
+        6-tuple: (btn_upload, btn_delivery, btn_records,
+                  data_cards, risk_alert, recent_table)
+    """
     gr.Markdown("## 工作台")
 
-    # 数据概览 (四宫格)
-    try:
-        init_cards, init_alert, init_table = _load_dashboard_data()
-    except Exception:
-        init_cards = _render_data_cards(20, 0, 0, 0.0)
-        init_alert = ""
-        init_table = _render_recent_table([])
+    init_cards = _render_data_cards(0, 0, 0, 0.0)
+    init_alert = ""
+    init_table = _render_recent_table([])
 
     data_cards = gr.HTML(value=init_cards)
     risk_alert = gr.HTML(value=init_alert)
 
-    # 快捷操作
     gr.Markdown("### 快捷操作")
     with gr.Row():
-        gr.Button("上传简历", variant="primary", size="lg")
-        gr.Button("新建投递任务", variant="secondary", size="lg")
-        gr.Button("查看投递记录", variant="secondary", size="lg")
+        btn_upload = gr.Button("📄 上传简历", variant="primary", size="lg")
+        btn_delivery = gr.Button("🚀 新建投递任务", variant="secondary", size="lg")
+        btn_records = gr.Button("📋 查看投递记录", variant="secondary", size="lg")
 
-    # 最近投递记录
     gr.Markdown("### 最近投递记录")
     recent_table = gr.HTML(value=init_table)
 
+    def _refresh(state):
+        user_name = state.get("user_name", "") if state else ""
+        return load_dashboard_data(user_name)
+
     refresh_btn = gr.Button("刷新数据", variant="secondary", size="sm")
     refresh_btn.click(
-        fn=_load_dashboard_data,
+        fn=_refresh,
+        inputs=[login_state],
         outputs=[data_cards, risk_alert, recent_table],
     )
+
+    return btn_upload, btn_delivery, btn_records, data_cards, risk_alert, recent_table
