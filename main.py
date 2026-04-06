@@ -1,15 +1,14 @@
-"""AI 求职智能管家 - 项目启动入口
-
-整合所有模块, 初始化数据库/日志/工作流, 启动 Gradio UI。
-"""
+"""Project entrypoint for the AI job copilot app."""
 
 from __future__ import annotations
 
+import io
+import os
+import socket
 import sys
 from pathlib import Path
 
 if sys.platform == "win32":
-    import io
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace", line_buffering=True)
     sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace", line_buffering=True)
 
@@ -24,8 +23,18 @@ from app.db.models import init_database
 logger = get_logger("main")
 
 
-def main():
-    """主启动函数"""
+def _find_available_port(preferred_port: int, search_span: int = 20) -> int:
+    """Find an available localhost port starting from the preferred one."""
+    for port in range(preferred_port, preferred_port + search_span + 1):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            if sock.connect_ex(("127.0.0.1", port)) != 0:
+                return port
+    raise OSError(f"Cannot find an available port from {preferred_port} to {preferred_port + search_span}.")
+
+
+def main() -> None:
+    """Launch the database, workflow and Gradio UI."""
     settings = get_settings()
     logger.info("=" * 60)
     logger.info("%s V%s 启动中...", settings.APP_NAME, settings.APP_VERSION)
@@ -37,22 +46,28 @@ def main():
     logger.info("[2/3] 初始化 LangGraph 工作流...")
     try:
         from app.workflow.job_workflow import get_workflow
+
         get_workflow()
         logger.info("工作流初始化成功")
-    except Exception as e:
-        logger.warning("工作流初始化跳过 (非必需): %s", e)
+    except Exception as exc:
+        logger.warning("工作流初始化跳过（非必须）：%s", exc)
 
     logger.info("[3/3] 启动 Gradio UI...")
-    from app.ui.app import create_app
-    app = create_app()
+    from app.ui.app import APP_CSS, APP_THEME, create_app
 
-    logger.info("所有模块初始化完成, 正在启动服务...")
+    app = create_app()
+    preferred_port = int(os.getenv("GRADIO_SERVER_PORT", "7860"))
+    server_port = _find_available_port(preferred_port)
+
+    logger.info("所有模块初始化完成，准备启动服务，端口=%s", server_port)
     app.launch(
         server_name="127.0.0.1",
-        server_port=7860,
+        server_port=server_port,
         share=False,
-        inbrowser=True,
+        inbrowser=os.getenv("GRADIO_INBROWSER", "1") == "1",
         show_error=True,
+        theme=APP_THEME,
+        css=APP_CSS,
     )
 
 

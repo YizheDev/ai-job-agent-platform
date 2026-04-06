@@ -248,6 +248,15 @@ class DeliveryRecordCRUD:
             return row["cnt"] if row else 0
 
     @staticmethod
+    def get_status_counts() -> dict[str, int]:
+        """Return delivery counts grouped by status."""
+        with _get_db() as conn:
+            rows = conn.execute(
+                "SELECT status, COUNT(*) AS cnt FROM delivery_record GROUP BY status"
+            ).fetchall()
+            return {row["status"]: row["cnt"] for row in rows}
+
+    @staticmethod
     def get_avg_score(days: int = 7) -> float:
         """获取近N日平均匹配分"""
         since = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d %H:%M:%S")

@@ -24,7 +24,7 @@ pydantic-settings>=2.6.0
 python-dotenv>=1.0.1
 
 # --- 前端UI ---
-gradio>=5.6.0
+gradio==6.9.0
 
 # --- 加密安全 ---
 cryptography>=43.0.0

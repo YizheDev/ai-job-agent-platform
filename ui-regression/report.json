@@ -1,0 +1,37 @@
+{
+  "dashboard": {
+    "title": "集中查看简历资产、岗位匹配、投递节奏和风险提醒，让整个求职流程保持透明、可控、可追踪。",
+    "cards": 5,
+    "screenshot": "C:\\Users\\BQ4\\Desktop\\project\\ai-job-agent-platform\\ui-regression\\dashboard.png"
+  },
+  "resume": {
+    "title": "上传 PDF 或 DOCX 原始简历，建立你的职业资料库。所有解析结果、版本管理和默认简历设置都会集中保存在这里。",
+    "cards": 5,
+    "screenshot": "C:\\Users\\BQ4\\Desktop\\project\\ai-job-agent-platform\\ui-regression\\resume.png"
+  },
+  "jd-match": {
+    "title": "先拆解岗位要求，再判断这份岗位值不值得投入优化和投递成本。页面采用左侧输入、右侧结果的招聘产品布局。",
+    "cards": 5,
+    "screenshot": "C:\\Users\\BQ4\\Desktop\\project\\ai-job-agent-platform\\ui-regression\\jd-match.png"
+  },
+  "optimize": {
+    "title": "Writer Agent 会根据 JD 生成改写建议和求职信草稿，但不会自动覆盖你的原始内容。这里始终坚持“建议优先、人工确认”。",
+    "cards": 5,
+    "screenshot": "C:\\Users\\BQ4\\Desktop\\project\\ai-job-agent-platform\\ui-regression\\optimize.png"
+  },
+  "delivery": {
+    "title": "Execution RPA 只负责执行浏览器动作，真正的提交必须经过风控校验和人工确认。整个流程默认遵循半自动安全模式。",
+    "cards": 5,
+    "screenshot": "C:\\Users\\BQ4\\Desktop\\project\\ai-job-agent-platform\\ui-regression\\delivery.png"
+  },
+  "records": {
+    "title": "集中追踪岗位、匹配分、投递时间和状态变化。你可以在这里筛选记录、导出报表、维护状态，并观察近阶段投递质量。",
+    "cards": 5,
+    "screenshot": "C:\\Users\\BQ4\\Desktop\\project\\ai-job-agent-platform\\ui-regression\\records.png"
+  },
+  "settings": {
+    "title": "管理账号状态、投递风控、模型 API、隐私策略和使用协议。敏感数据默认只保存在本地环境中。",
+    "cards": 5,
+    "screenshot": "C:\\Users\\BQ4\\Desktop\\project\\ai-job-agent-platform\\ui-regression\\settings.png"
+  }
+}
