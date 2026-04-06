@@ -32,7 +32,7 @@ LOGIN_CSS = """
 /* ============ Login Page — Split Layout ============ */
 
 #login-panel {
-    display: flex !important;
+    display: flex;
     align-items: center !important;
     justify-content: center !important;
     min-height: 100vh !important;
@@ -40,6 +40,9 @@ LOGIN_CSS = """
     padding: 24px !important;
     position: relative !important;
     overflow: hidden !important;
+}
+#login-panel.hide {
+    display: none !important;
 }
 #login-panel::before {
     content: '';
@@ -70,11 +73,12 @@ LOGIN_CSS = """
                 0 0 0 1px rgba(255,255,255,0.05) !important;
     gap: 0 !important;
     padding: 0 !important;
-    background: transparent !important;
+    background: #FFFFFF !important;
     border: none !important;
     animation: scaleIn 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) !important;
     position: relative !important;
     z-index: 1 !important;
+    align-items: stretch !important;
 }
 
 /* Left branding panel */
@@ -88,6 +92,8 @@ LOGIN_CSS = """
     border: none !important;
     position: relative !important;
     overflow: hidden !important;
+    align-self: stretch !important;
+    border-radius: 0 !important;
 }
 #login-left > div { padding: 0 !important; }
 #login-left::before {
@@ -258,38 +264,98 @@ LOGIN_CSS = """
     letter-spacing: 0.3px;
 }
 
-/* ============ Logout Row ============ */
+/* ============ Logout Row (hidden, kept for Gradio event wiring) ============ */
 #logout-row {
-    background: linear-gradient(135deg, #FFFFFF 0%, #FAFBFC 100%) !important;
-    border-bottom: 1px solid rgba(0,0,0,0.04) !important;
-    padding: 0 28px !important;
-    min-height: 40px !important;
-    max-height: 40px !important;
-    gap: 12px !important;
-    align-items: center !important;
-    justify-content: flex-end !important;
-    margin: 0 !important;
-    overflow: hidden !important;
-}
-#logout-row > div {
-    flex: none !important;
-    min-height: 0 !important;
-    padding: 0 !important;
-}
-#logout-row .wrap[data-testid="status-tracker"] {
     display: none !important;
+    height: 0 !important;
+    min-height: 0 !important;
+    max-height: 0 !important;
+    overflow: hidden !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: none !important;
 }
-.logout-user-label {
-    font-size: 13px; color: var(--c-text-3);
-    text-align: right; line-height: 40px;
-    font-weight: 450;
+
+/* ============ Header User Dropdown ============ */
+.header-user-dropdown {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
 }
-#logout-btn {
-    height: 28px !important; min-height: 28px !important;
-    line-height: 28px !important; padding: 0 16px !important;
-    font-size: 12px !important; border-radius: 6px !important;
-    min-width: auto !important; max-width: 80px !important;
-    font-weight: 500 !important;
+.header-user-trigger {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 13px;
+    color: #4E5969;
+    font-weight: 500;
+    cursor: pointer;
+    padding: 4px 10px;
+    border-radius: 8px;
+    transition: all 0.2s ease;
+    user-select: none;
+}
+.header-user-trigger:hover {
+    background: rgba(22,93,255,0.06);
+    color: #165DFF;
+}
+.header-user-arrow {
+    transition: transform 0.25s ease;
+    color: #86909C;
+    margin-left: 2px;
+}
+.header-user-dropdown:hover .header-user-arrow {
+    transform: rotate(180deg);
+    color: #165DFF;
+}
+.header-user-menu {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    min-width: 160px;
+    background: #FFFFFF;
+    border-radius: 10px;
+    box-shadow: 0 8px 30px rgba(0,0,0,0.12), 0 0 0 1px rgba(0,0,0,0.04);
+    padding: 6px;
+    opacity: 0;
+    visibility: hidden;
+    transform: translateY(-4px);
+    transition: all 0.2s ease;
+    z-index: 1000;
+}
+.header-user-dropdown:hover .header-user-menu {
+    opacity: 1;
+    visibility: visible;
+    transform: translateY(0);
+}
+.header-user-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    font-size: 13px;
+    color: #4E5969;
+    border-radius: 6px;
+    cursor: default;
+    white-space: nowrap;
+    transition: all 0.15s ease;
+}
+.header-user-info {
+    font-weight: 500;
+    color: #1D2129;
+}
+.header-user-menu-divider {
+    height: 1px;
+    background: #F2F3F5;
+    margin: 4px 8px;
+}
+.header-logout-item {
+    cursor: pointer !important;
+    color: #F53F3F;
+}
+.header-logout-item:hover {
+    background: rgba(245,63,63,0.06);
+    color: #CB2634;
 }
 
 /* ============ Responsive Login ============ */
@@ -347,12 +413,30 @@ LOGIN_BRAND_HTML = """<div class="login-brand">
 def build_header_html(user_name: str, version: str) -> str:
     """构建顶部通栏 HTML"""
     safe_name = html_mod.escape(user_name) if user_name else ""
-    user_span = (
-        f'<span style="font-size:13px;color:#4E5969;font-weight:500;">'
-        f'\U0001F464 {safe_name}</span>'
-        if safe_name
-        else ""
-    )
+    if safe_name:
+        user_block = (
+            f'<div class="header-user-dropdown">'
+            f'<span class="header-user-trigger">'
+            f'\U0001F464 {safe_name}'
+            f'<svg class="header-user-arrow" viewBox="0 0 12 12" width="12" height="12">'
+            f'<path d="M3 4.5L6 7.5L9 4.5" fill="none" stroke="currentColor" '
+            f'stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>'
+            f'</svg>'
+            f'</span>'
+            f'<div class="header-user-menu">'
+            f'<div class="header-user-menu-item header-user-info">'
+            f'\U0001F464 {safe_name}'
+            f'</div>'
+            f'<div class="header-user-menu-divider"></div>'
+            f'<div class="header-user-menu-item header-logout-item" '
+            f'onclick="document.querySelector(\'#logout-btn\').click()">'
+            f'\U0001F6AA 退出登录'
+            f'</div>'
+            f'</div>'
+            f'</div>'
+        )
+    else:
+        user_block = ""
     return (
         '<div class="app-header-bar">'
         '<div class="hl">'
@@ -362,7 +446,7 @@ def build_header_html(user_name: str, version: str) -> str:
         "</div>"
         '<div class="hr">'
         f'<span class="ver">V{version}</span>'
-        f"{user_span}"
+        f"{user_block}"
         "</div>"
         "</div>"
     )
@@ -450,9 +534,9 @@ def handle_login(user_name: str, api_key: str) -> tuple:
     if agreed:
         return (
             state, browser_data,
-            gr.Column(visible=False),
-            gr.Column(visible=False),
-            gr.Column(visible=True),
+            gr.update(visible=False),
+            gr.update(visible=False),
+            gr.update(visible=True),
             "",
             header,
             user_label,
@@ -460,9 +544,9 @@ def handle_login(user_name: str, api_key: str) -> tuple:
 
     return (
         state, browser_data,
-        gr.Column(visible=False),
-        gr.Column(visible=True),
-        gr.Column(visible=False),
+        gr.update(visible=False),
+        gr.update(visible=True),
+        gr.update(visible=False),
         "",
         header,
         user_label,
@@ -483,9 +567,9 @@ def handle_logout() -> tuple:
     return (
         empty,
         empty,
-        gr.Column(visible=True),
-        gr.Column(visible=False),
-        gr.Column(visible=False),
+        gr.update(visible=True),
+        gr.update(visible=False),
+        gr.update(visible=False),
         "",
         "",
         "",
@@ -502,64 +586,65 @@ def restore_session(saved_state) -> tuple:
     """
     _keep = gr.skip()
     empty_state = {"logged_in": False, "user_name": "", "api_key": ""}
-
-    if not saved_state or not isinstance(saved_state, dict) or not saved_state.get("logged_in"):
-        return (
-            empty_state,
-            gr.Column(visible=True),
-            gr.Column(visible=False),
-            gr.Column(visible=False),
-            _keep, _keep,
-        )
-
-    user_name = saved_state.get("user_name", "")
-    api_key = saved_state.get("api_key", "")
-
-    if not user_name:
-        return (
-            empty_state,
-            gr.Column(visible=True),
-            gr.Column(visible=False),
-            gr.Column(visible=False),
-            _keep, _keep,
-        )
-
-    if api_key:
-        try:
-            update_env_file({"LLM_API_KEY": api_key})
-            reload_settings()
-        except Exception:
-            pass
-
-    state = {"logged_in": True, "user_name": user_name, "api_key": api_key}
-
-    from app.db.crud import SysConfigCRUD
+    _show_login = (
+        empty_state,
+        gr.update(visible=True),
+        gr.update(visible=False),
+        gr.update(visible=False),
+        _keep, _keep,
+    )
 
     try:
-        agreed = SysConfigCRUD.get("agreement_accepted", user_name=user_name) == "true"
-    except Exception:
-        agreed = False
+        if not saved_state or not isinstance(saved_state, dict) or not saved_state.get("logged_in"):
+            return _show_login
 
-    settings = get_settings()
-    header = build_header_html(user_name, settings.APP_VERSION)
-    safe_name = html_mod.escape(user_name)
-    user_label = f'<span class="logout-user-label">当前用户: {safe_name}</span>'
+        user_name = saved_state.get("user_name", "")
+        api_key = saved_state.get("api_key", "")
 
-    if agreed:
+        if not user_name:
+            return _show_login
+
+        if api_key:
+            try:
+                update_env_file({"LLM_API_KEY": api_key})
+                reload_settings()
+            except Exception:
+                pass
+
+        state = {"logged_in": True, "user_name": user_name, "api_key": api_key}
+
+        from app.db.crud import SysConfigCRUD
+
+        try:
+            agreed = SysConfigCRUD.get("agreement_accepted", user_name=user_name) == "true"
+        except Exception:
+            agreed = False
+
+        settings = get_settings()
+        header = build_header_html(user_name, settings.APP_VERSION)
+        safe_name = html_mod.escape(user_name)
+        user_label = f'<span class="logout-user-label">当前用户: {safe_name}</span>'
+
+        logger.info("会话恢复: user=%s, agreed=%s", user_name, agreed)
+
+        if agreed:
+            return (
+                state,
+                gr.update(visible=False),
+                gr.update(visible=False),
+                gr.update(visible=True),
+                header,
+                user_label,
+            )
+
         return (
             state,
-            gr.Column(visible=False),
-            gr.Column(visible=False),
-            gr.Column(visible=True),
+            gr.update(visible=False),
+            gr.update(visible=True),
+            gr.update(visible=False),
             header,
             user_label,
         )
-
-    return (
-        state,
-        gr.Column(visible=False),
-        gr.Column(visible=True),
-        gr.Column(visible=False),
-        header,
-        user_label,
-    )
+    except Exception as e:
+        logger.error("会话恢复失败: %s", e)
+        return _show_login

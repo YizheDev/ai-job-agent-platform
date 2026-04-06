@@ -1,7 +1,7 @@
 """BOSS 直聘账号管理页面
 
-连接 / 扫码登录 / Cookie 管理 / 个人信息展示 /
-打招呼话术模板 / 公司&岗位黑名单。
+连接模式选择 (CDP/Playwright) / 扫码登录 / Cookie 管理 /
+个人信息展示 / 打招呼话术模板 / 公司&岗位黑名单。
 """
 
 from __future__ import annotations
@@ -14,7 +14,7 @@ from PIL import Image
 
 from app.core.logger import get_logger
 from app.db.crud import SysConfigCRUD
-from app.utils.boss_crawler import get_crawler
+from app.utils.boss_crawler import ConnectionMode, get_crawler
 from app.utils.security_util import clear_cookie
 
 logger = get_logger(__name__)
@@ -25,9 +25,39 @@ CFG_BLACKLIST_TITLE = "boss_blacklist_title"
 
 DEFAULT_GREETING = "您好，我对贵公司的这个职位很感兴趣，希望能有机会进一步沟通。"
 
+MODE_CDP_LABEL = "Chrome 真实浏览器 (推荐)"
+MODE_PW_LABEL = "内置浏览器 (备用)"
+
+
+def _mode_from_label(label: str) -> str:
+    if "Chrome" in (label or ""):
+        return ConnectionMode.CDP
+    return ConnectionMode.PLAYWRIGHT
+
 
 # ------------------------------------------------------------------
-# 辅助
+# Loading animation
+# ------------------------------------------------------------------
+
+_SPINNER_CSS = "@keyframes _bspin{to{transform:rotate(360deg)}}"
+
+def _loading_html(msg: str) -> str:
+    """带旋转动画的加载状态 HTML"""
+    return (
+        f'<style>{_SPINNER_CSS}</style>'
+        '<div style="display:inline-flex;align-items:center;gap:10px;'
+        'padding:6px 0;">'
+        '<div style="width:16px;height:16px;border:2.5px solid #e0e7ff;'
+        "border-top:2.5px solid #165DFF;border-radius:50%;"
+        'animation:_bspin .8s linear infinite;flex-shrink:0;"></div>'
+        f'<span style="color:#165DFF;font-weight:600;font-size:14px;">'
+        f"{msg}</span>"
+        "</div>"
+    )
+
+
+# ------------------------------------------------------------------
+# Status helpers
 # ------------------------------------------------------------------
 
 def _status_text() -> str:
@@ -37,12 +67,29 @@ def _status_text() -> str:
     return "已登录 ✓" if c.is_logged_in else "已连接 (未登录)"
 
 
-def _status_html(text: str) -> str:
+def _status_html() -> str:
+    c = get_crawler()
+    text = _status_text()
+    mode = c.mode_display
+    cb = c.circuit_state
+
     if "已登录" in text:
-        return f'<span class="status-tag tag-green">{text}</span>'
-    if "已连接" in text:
-        return f'<span class="status-tag tag-orange">{text}</span>'
-    return f'<span class="status-tag tag-gray">{text}</span>'
+        tag = f'<span class="status-tag tag-green">{text}</span>'
+    elif "已连接" in text:
+        tag = f'<span class="status-tag tag-orange">{text}</span>'
+    else:
+        tag = f'<span class="status-tag tag-gray">{text}</span>'
+
+    if c.is_running:
+        tag += (
+            f' <span style="color:#666;font-size:13px;">| {mode}</span>'
+        )
+        if cb != "正常":
+            tag += (
+                f' <span style="color:#f60;font-size:13px;">'
+                f'| 熔断: {cb}</span>'
+            )
+    return tag
 
 
 def _build_profile_html(profile: dict) -> str:
@@ -69,7 +116,8 @@ def _build_profile_html(profile: dict) -> str:
         '<div style="background:linear-gradient(135deg,#f0f7ff,#e8f4fd);'
         "border:1px solid #d1e0ff;border-radius:12px;padding:20px 24px;"
         'margin:8px 0;line-height:1.8;">'
-        '<div style="font-size:15px;font-weight:600;color:#165DFF;margin-bottom:8px;">'
+        '<div style="font-size:15px;font-weight:600;color:#165DFF;'
+        'margin-bottom:8px;">'
         "\U0001F464 BOSS 直聘 · 个人信息</div>"
         f'<div style="color:#333;font-size:14px;">{body}</div>'
         "</div>"
@@ -77,93 +125,189 @@ def _build_profile_html(profile: dict) -> str:
 
 
 # ------------------------------------------------------------------
-# 连接 / 登录
+# Connect / Login
 # ------------------------------------------------------------------
 
-def _connect_and_show_qr():
+def _connect_boss(mode_label, cdp_port):
+    mode = _mode_from_label(mode_label)
     c = get_crawler()
 
-    if not c.is_running:
-        msg = c.launch(headless=True)
-        if "失败" in msg:
-            return (
-                None, _status_html("连接失败"), f"浏览器启动失败: {msg}",
-                "", gr.Column(visible=True), gr.Column(visible=False),
+    if c.is_running:
+        if c.is_logged_in:
+            profile = c.get_user_profile()
+            yield (
+                None, _status_html(), "已处于连接状态",
+                _build_profile_html(profile),
+                gr.update(visible=False), gr.update(visible=True),
             )
+            return
+        yield (
+            None, _status_html(), "已连接, 请检查登录状态",
+            "", gr.update(visible=True), gr.update(visible=False),
+        )
+        return
+
+    # -- 第一阶段: 立即显示加载动画 --
+    if mode == ConnectionMode.CDP:
+        loading_msg = "正在启动 Chrome 并连接 BOSS 直聘..."
+    else:
+        loading_msg = "正在启动内置浏览器..."
+
+    yield (
+        gr.update(), _loading_html(loading_msg), loading_msg,
+        gr.update(), gr.update(), gr.update(),
+    )
+
+    # -- 第二阶段: 执行连接 --
+    if mode == ConnectionMode.CDP:
+        port = int(cdp_port) if cdp_port else 9222
+        msg = c.launch_cdp(port)
+
+        if "失败" in msg:
+            yield (
+                None, _status_html(), msg,
+                "", gr.update(visible=True), gr.update(visible=False),
+            )
+            return
+
+        if c.is_logged_in:
+            yield (
+                gr.update(),
+                _loading_html("连接成功, 正在获取个人信息..."),
+                "连接成功, 正在获取个人信息...",
+                gr.update(), gr.update(), gr.update(),
+            )
+            profile = c.get_user_profile()
+            yield (
+                None, _status_html(), msg,
+                _build_profile_html(profile),
+                gr.update(visible=False), gr.update(visible=True),
+            )
+            return
+
+        yield (
+            None, _status_html(), msg,
+            "", gr.update(visible=True), gr.update(visible=False),
+        )
+        return
+
+    # Playwright mode
+    msg = c.launch_playwright(headless=True)
+    if "失败" in msg:
+        yield (
+            None, _status_html(), msg,
+            "", gr.update(visible=True), gr.update(visible=False),
+        )
+        return
 
     if c.is_logged_in:
-        profile = c.get_user_profile()
-        return (
-            None, _status_html("已登录 ✓"),
-            "已通过 Cookie 自动登录",
-            _build_profile_html(profile),
-            gr.Column(visible=False), gr.Column(visible=True),
+        yield (
+            gr.update(),
+            _loading_html("连接成功, 正在获取个人信息..."),
+            "连接成功, 正在获取个人信息...",
+            gr.update(), gr.update(), gr.update(),
         )
+        profile = c.get_user_profile()
+        yield (
+            None, _status_html(), msg,
+            _build_profile_html(profile),
+            gr.update(visible=False), gr.update(visible=True),
+        )
+        return
 
+    yield (
+        gr.update(),
+        _loading_html("正在打开登录页面..."),
+        "正在打开登录页面...",
+        gr.update(), gr.update(), gr.update(),
+    )
     login_msg = c.open_login_page()
     img_bytes = c.capture_login_screenshot()
     img = Image.open(io.BytesIO(img_bytes)) if img_bytes else None
-    return (
-        img, _status_html(_status_text()), login_msg,
-        "", gr.Column(visible=True), gr.Column(visible=False),
+    yield (
+        img, _status_html(), login_msg,
+        "", gr.update(visible=True), gr.update(visible=False),
     )
 
 
 def _refresh_qr():
     c = get_crawler()
     if not c.is_running:
-        return None, _status_html("未连接"), "请先点击「连接 BOSS 直聘」"
-
+        return None, _status_html(), "请先点击「连接 BOSS 直聘」"
     c.open_login_page()
     img_bytes = c.capture_login_screenshot()
     img = Image.open(io.BytesIO(img_bytes)) if img_bytes else None
-    return img, _status_html(_status_text()), "二维码已刷新, 请重新扫码"
+    return img, _status_html(), "二维码已刷新, 请重新扫码"
 
 
 def _check_login():
     c = get_crawler()
     if not c.is_running:
-        return (
-            _status_html("未连接"), "请先点击「连接 BOSS 直聘」",
-            "", gr.Column(visible=True), gr.Column(visible=False),
+        yield (
+            _status_html(), "请先点击「连接 BOSS 直聘」",
+            "", gr.update(visible=True), gr.update(visible=False),
         )
+        return
+
+    yield (
+        _loading_html("正在检查登录状态..."),
+        "正在检查登录状态...",
+        gr.update(), gr.update(), gr.update(),
+    )
 
     msg = c.check_login()
     if c.is_logged_in:
-        profile = c.get_user_profile()
-        return (
-            _status_html("已登录 ✓"), msg,
-            _build_profile_html(profile),
-            gr.Column(visible=False), gr.Column(visible=True),
+        yield (
+            _loading_html("登录成功, 正在获取个人信息..."),
+            "正在获取个人信息...",
+            gr.update(), gr.update(), gr.update(),
         )
-    return (
-        _status_html(_status_text()), msg,
-        "", gr.Column(visible=True), gr.Column(visible=False),
+        profile = c.get_user_profile()
+        yield (
+            _status_html(), msg,
+            _build_profile_html(profile),
+            gr.update(visible=False), gr.update(visible=True),
+        )
+        return
+
+    yield (
+        _status_html(), msg,
+        "", gr.update(visible=True), gr.update(visible=False),
     )
 
 
 def _disconnect():
+    yield (
+        gr.update(), _loading_html("正在断开连接..."),
+        "正在断开连接...",
+        gr.update(), gr.update(), gr.update(),
+    )
     c = get_crawler()
     msg = c.close()
-    return (
-        None, _status_html("未连接"), msg,
-        "", gr.Column(visible=True), gr.Column(visible=False),
+    yield (
+        None, _status_html(), msg,
+        "", gr.update(visible=True), gr.update(visible=False),
     )
 
 
 def _do_logout():
+    yield (
+        gr.update(), _loading_html("正在退出登录并清理数据..."),
+        "正在退出登录...",
+        gr.update(), gr.update(), gr.update(),
+    )
     c = get_crawler()
     if c.is_running:
         c.close()
     clear_cookie("boss_zhipin")
-    return (
-        None, _status_html("未连接"), "已退出登录, Cookie 已清除",
-        "", gr.Column(visible=True), gr.Column(visible=False),
+    yield (
+        None, _status_html(), "已退出登录, Cookie 已清除",
+        "", gr.update(visible=True), gr.update(visible=False),
     )
 
 
 # ------------------------------------------------------------------
-# 配置读写
+# Config read/write
 # ------------------------------------------------------------------
 
 def _load_greeting(state) -> str:
@@ -184,20 +328,28 @@ def _save_greeting(text: str, state) -> str:
 
 def _load_blacklists(state) -> tuple[str, str]:
     user_name = state.get("user_name", "") if state else ""
-    companies = SysConfigCRUD.get(CFG_BLACKLIST_COMPANY, user_name=user_name) or ""
-    titles = SysConfigCRUD.get(CFG_BLACKLIST_TITLE, user_name=user_name) or ""
+    companies = (
+        SysConfigCRUD.get(CFG_BLACKLIST_COMPANY, user_name=user_name) or ""
+    )
+    titles = (
+        SysConfigCRUD.get(CFG_BLACKLIST_TITLE, user_name=user_name) or ""
+    )
     return companies, titles
 
 
 def _save_blacklists(companies: str, titles: str, state) -> str:
     user_name = state.get("user_name", "") if state else ""
-    SysConfigCRUD.set(CFG_BLACKLIST_COMPANY, companies.strip(), user_name=user_name)
-    SysConfigCRUD.set(CFG_BLACKLIST_TITLE, titles.strip(), user_name=user_name)
+    SysConfigCRUD.set(
+        CFG_BLACKLIST_COMPANY, companies.strip(), user_name=user_name,
+    )
+    SysConfigCRUD.set(
+        CFG_BLACKLIST_TITLE, titles.strip(), user_name=user_name,
+    )
     return "黑名单已保存"
 
 
 # ------------------------------------------------------------------
-# 页面
+# Page
 # ------------------------------------------------------------------
 
 def create_boss_account_page(login_state):
@@ -211,19 +363,69 @@ def create_boss_account_page(login_state):
         "</div>"
     )
 
-    op_msg = gr.Textbox(label="操作状态", interactive=False, max_lines=2)
+    op_msg = gr.Textbox(label="操作状态", interactive=False, max_lines=3)
+
+    # ==================== 连接模式选择 ====================
+    gr.Markdown("### 连接模式")
+
+    mode_radio = gr.Radio(
+        choices=[MODE_CDP_LABEL, MODE_PW_LABEL],
+        value=MODE_CDP_LABEL,
+        label="选择连接方式",
+    )
+
+    with gr.Column(visible=True) as cdp_section:
+        gr.HTML(
+            '<div class="alert-bar info">'
+            "<strong>Chrome 真实浏览器模式 (推荐)</strong><br>"
+            "点击「连接 BOSS 直聘」后系统将自动启动 Chrome 浏览器。<br>"
+            "首次使用请在弹出的 Chrome 中登录 BOSS 直聘, "
+            "后续会自动记住登录状态。"
+            "</div>"
+        )
+        cdp_port_input = gr.Textbox(
+            label="调试端口 (一般无需修改)",
+            value="9222",
+            max_lines=1,
+            visible=False,
+        )
+
+    with gr.Column(visible=False) as pw_section:
+        gr.HTML(
+            '<div class="alert-bar info">'
+            "<strong>内置浏览器模式 (备用)</strong><br>"
+            "使用内置浏览器, 通过 Cookie 或扫码登录。"
+            " Chrome 不可用时系统会自动降级到此模式。"
+            "</div>"
+        )
+
+    def _toggle_mode(label):
+        is_cdp = "Chrome" in (label or "")
+        return gr.update(visible=is_cdp), gr.update(visible=not is_cdp)
+
+    mode_radio.change(
+        fn=_toggle_mode,
+        inputs=[mode_radio],
+        outputs=[cdp_section, pw_section],
+    )
 
     # ==================== 连接与登录 ====================
     gr.Markdown("### 连接与登录")
 
     with gr.Row():
-        conn_status = gr.HTML(value=_status_html(_status_text()))
+        conn_status = gr.HTML(value=_status_html())
 
     with gr.Row():
-        connect_btn = gr.Button("连接 BOSS 直聘", variant="primary", scale=2)
-        check_login_btn = gr.Button("检查登录状态", variant="secondary", scale=2)
+        connect_btn = gr.Button(
+            "连接 BOSS 直聘", variant="primary", scale=1,
+        )
+        check_login_btn = gr.Button(
+            "检查登录状态", variant="secondary", scale=1,
+        )
         disconnect_btn = gr.Button("断开连接", variant="stop", scale=1)
-        logout_boss_btn = gr.Button("退出登录 (清除 Cookie)", variant="stop", scale=1)
+        logout_boss_btn = gr.Button(
+            "退出登录 (清除 Cookie)", variant="stop", scale=1,
+        )
 
     with gr.Column(visible=False) as profile_section:
         profile_html = gr.HTML("")
@@ -232,21 +434,24 @@ def create_boss_account_page(login_state):
         with gr.Row():
             with gr.Column(scale=1):
                 qr_image = gr.Image(
-                    label="BOSS 直聘登录页 (请用 APP 扫码)",
+                    label="登录页截图 / 二维码",
                     type="pil",
                     interactive=False,
                     height=400,
                 )
             with gr.Column(scale=1):
                 gr.Markdown(
-                    "**扫码登录指引**\n\n"
+                    "**使用说明**\n\n"
+                    "**Chrome 模式 (推荐):**\n"
+                    "1. 点击「连接 BOSS 直聘」→ Chrome 自动启动\n"
+                    "2. 首次使用: 在弹出的 Chrome 中登录 BOSS 直聘\n"
+                    "3. 登录后点击「检查登录状态」\n"
+                    "4. 后续使用会自动记住登录\n\n"
+                    "**内置浏览器模式 (备用):**\n"
                     "1. 点击「连接 BOSS 直聘」\n"
-                    "2. 左侧将显示登录页截图 (含二维码)\n"
-                    "3. 打开 **BOSS 直聘 APP** → 扫一扫\n"
-                    "4. 手机确认登录后, 点击「检查登录状态」\n"
-                    "5. 状态变为 **已登录 ✓** 即可前往自动投递页面\n\n"
-                    "> 如二维码过期, 点击「连接 BOSS 直聘」重新获取\n\n"
-                    "> 已有登录记录时会自动通过 Cookie 登录"
+                    "2. 左侧显示二维码, 用 BOSS 直聘 APP 扫码\n"
+                    "3. 扫码后点击「检查登录状态」\n\n"
+                    "> 连续失败时系统会自动切换备用方案"
                 )
 
     # ==================== 打招呼话术 ====================
@@ -262,10 +467,16 @@ def create_boss_account_page(login_state):
         lines=3,
         value="",
     )
-    greeting_msg = gr.Textbox(label="", interactive=False, max_lines=1, visible=False)
+    greeting_msg = gr.Textbox(
+        label="", interactive=False, max_lines=1, visible=False,
+    )
     with gr.Row():
-        load_greeting_btn = gr.Button("加载已保存话术", variant="secondary", size="sm")
-        save_greeting_btn = gr.Button("保存话术", variant="primary", size="sm")
+        load_greeting_btn = gr.Button(
+            "加载已保存话术", variant="secondary", size="sm",
+        )
+        save_greeting_btn = gr.Button(
+            "保存话术", variant="primary", size="sm",
+        )
 
     # ==================== 黑名单 ====================
     gr.Markdown("### 公司 & 岗位黑名单")
@@ -285,19 +496,29 @@ def create_boss_account_page(login_state):
             placeholder="例:\n电话销售\n保险代理",
             lines=5,
         )
-    blacklist_msg = gr.Textbox(label="", interactive=False, max_lines=1, visible=False)
+    blacklist_msg = gr.Textbox(
+        label="", interactive=False, max_lines=1, visible=False,
+    )
     with gr.Row():
-        load_bl_btn = gr.Button("加载已保存黑名单", variant="secondary", size="sm")
-        save_bl_btn = gr.Button("保存黑名单", variant="primary", size="sm")
+        load_bl_btn = gr.Button(
+            "加载已保存黑名单", variant="secondary", size="sm",
+        )
+        save_bl_btn = gr.Button(
+            "保存黑名单", variant="primary", size="sm",
+        )
 
-    # ==================== 事件绑定 ====================
+    # ==================== Event bindings ====================
 
     _connect_outputs = [
         qr_image, conn_status, op_msg,
         profile_html, login_section, profile_section,
     ]
 
-    connect_btn.click(fn=_connect_and_show_qr, outputs=_connect_outputs)
+    connect_btn.click(
+        fn=_connect_boss,
+        inputs=[mode_radio, cdp_port_input],
+        outputs=_connect_outputs,
+    )
 
     _check_outputs = [
         conn_status, op_msg,
@@ -312,7 +533,8 @@ def create_boss_account_page(login_state):
         fn=_load_greeting, inputs=[login_state], outputs=[greeting_input],
     )
     save_greeting_btn.click(
-        fn=_save_greeting, inputs=[greeting_input, login_state], outputs=[op_msg],
+        fn=_save_greeting, inputs=[greeting_input, login_state],
+        outputs=[op_msg],
     )
 
     def _load_bl(state):

@@ -963,7 +963,7 @@ def _accept_agreement(state):
     user_name = state.get("user_name", "") if state else ""
     from app.db.crud import SysConfigCRUD
     SysConfigCRUD.set("agreement_accepted", "true", user_name=user_name)
-    return gr.Column(visible=False), gr.Column(visible=True)
+    return gr.update(visible=False), gr.update(visible=True)
 
 
 def _check_agreement() -> bool:
@@ -1031,7 +1031,7 @@ def create_app() -> gr.Blocks:
             )
 
         # ---- 主面板 ----
-        with gr.Column(visible=False) as main_panel:
+        with gr.Column(visible=False, elem_id="main-panel") as main_panel:
 
             header_html = gr.HTML(
                 build_header_html("", settings.APP_VERSION)

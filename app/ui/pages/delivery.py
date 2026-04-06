@@ -38,14 +38,20 @@ def _resume_choices(user_name: str = "") -> list[str]:
 def _connection_banner() -> str:
     c = get_crawler()
     if c.is_running and c.is_logged_in:
+        mode = c.mode_display
+        cb = c.circuit_state
+        extra = f" [{mode}]"
+        if cb != "正常":
+            extra += f' | <span style="color:#f60;">熔断: {cb}</span>'
         return (
             '<div class="alert-bar success">'
-            "✓ BOSS 直聘已连接并登录, 可以开始搜索和投递。"
+            f"✓ BOSS 直聘已连接并登录, 可以开始搜索和投递。{extra}"
             "</div>"
         )
     return (
         '<div class="alert-bar">'
-        "⚠ 请先前往「BOSS 账号」页面连接并登录 BOSS 直聘, 然后再进行搜索和投递。"
+        "⚠ 请先前往「BOSS 账号」页面连接并登录 BOSS 直聘, "
+        "然后再进行搜索和投递。"
         "</div>"
     )
 
@@ -87,16 +93,22 @@ def _load_blacklists(user_name: str = "") -> tuple[list[str], list[str]]:
 
 def _search_jobs(keyword, city, hr_filter, state):
     if not keyword or not keyword.strip():
-        return [], [], "请输入搜索关键词"
+        yield [], [], "请输入搜索关键词"
+        return
     c = get_crawler()
     if not c.is_running:
-        return [], [], "请先在「BOSS 账号」页面连接 BOSS 直聘"
+        yield [], [], "请先在「BOSS 账号」页面连接 BOSS 直聘"
+        return
     if not c.is_logged_in:
-        return [], [], "请先在「BOSS 账号」页面扫码登录"
+        yield [], [], "请先在「BOSS 账号」页面扫码登录"
+        return
+
+    yield gr.update(), gr.update(), f"正在搜索「{keyword.strip()}」, 请稍候..."
 
     jobs = c.search_jobs(keyword.strip(), city or "全国")
     if not jobs:
-        return [], [], "未搜索到岗位, 请调整关键词或检查登录状态"
+        yield [], [], "未搜索到岗位, 请调整关键词或检查登录状态"
+        return
 
     if hr_filter and hr_filter != "不限":
         jobs = [j for j in jobs if hr_filter in j.get("hr_active", "")]
@@ -127,7 +139,7 @@ def _search_jobs(keyword, city, hr_filter, state):
         ]
         for i, j in enumerate(jobs)
     ]
-    return table, jobs, f"搜索完成, 找到 {len(jobs)} 个岗位"
+    yield table, jobs, f"搜索完成, 找到 {len(jobs)} 个岗位"
 
 
 def _on_job_select(evt: gr.SelectData, all_jobs):
