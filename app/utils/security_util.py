@@ -11,7 +11,7 @@ import os
 import shutil
 from pathlib import Path
 
-from app.core.config import DATA_DIR, RESUME_DIR, SCREENSHOT_DIR, get_settings
+from app.core.config import DATA_DIR, DB_PATH, RESUME_DIR, SCREENSHOT_DIR, get_settings
 from app.core.exceptions import EncryptionError
 from app.core.logger import get_logger
 
@@ -100,8 +100,11 @@ def clear_cookie(name: str = "default") -> None:
     """清除 Cookie"""
     path = _cookie_path(name)
     if path.exists():
-        path.unlink()
-        logger.info("Cookie 已清除 (%s)", name)
+        try:
+            path.unlink()
+            logger.info("Cookie 已清除 (%s)", name)
+        except Exception as e:
+            logger.warning("Cookie 清除失败 (%s): %s", name, e)
 
 
 def mask_sensitive(text: str, keep_start: int = 3, keep_end: int = 4) -> str:
@@ -119,11 +122,16 @@ def wipe_all_data() -> bool:
                 shutil.rmtree(str(target_dir))
                 target_dir.mkdir(parents=True, exist_ok=True)
 
-        db_path = DATA_DIR / "job_agent.db"
-        if db_path.exists():
-            db_path.unlink()
+        for suffix in ("", "-wal", "-shm"):
+            p = DB_PATH.parent / (DB_PATH.name + suffix)
+            if p.exists():
+                p.unlink()
 
-        clear_cookie()
+        for cookie_file in DATA_DIR.glob(".cookies*.enc"):
+            try:
+                cookie_file.unlink()
+            except Exception:
+                logger.warning("无法删除 Cookie 文件: %s", cookie_file.name)
 
         if _KEY_FILE.exists():
             _KEY_FILE.unlink()

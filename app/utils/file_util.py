@@ -82,8 +82,9 @@ def export_delivery_records_excel(records: list[dict]) -> str:
             record.get("status", ""),
         ])
 
+    from openpyxl.utils import get_column_letter
     for col_idx in range(1, len(headers) + 1):
-        ws.column_dimensions[chr(64 + col_idx)].width = 18
+        ws.column_dimensions[get_column_letter(col_idx)].width = 18
 
     wb.save(str(filepath))
     logger.info("投递记录导出成功: %s (%d条)", filepath, len(records))
@@ -107,9 +108,12 @@ def cleanup_exports(days: int = 30) -> int:
     count = 0
     cutoff = datetime.now().timestamp() - days * 86400
     for f in export_dir.iterdir():
-        if f.is_file() and f.stat().st_mtime < cutoff:
-            f.unlink()
-            count += 1
+        try:
+            if f.is_file() and f.stat().st_mtime < cutoff:
+                f.unlink()
+                count += 1
+        except Exception as e:
+            logger.warning("清理文件失败 %s: %s", f.name, e)
     if count:
         logger.info("清理过期导出文件: %d 个", count)
     return count

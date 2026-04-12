@@ -6,6 +6,7 @@ Playwright 浏览器会话管理, Cookie 加密存储/加载, 页面操作封装
 from __future__ import annotations
 
 import asyncio
+import os
 from typing import Optional
 
 from app.core.logger import get_logger
@@ -34,8 +35,16 @@ class BrowserManager:
             return
         from playwright.async_api import async_playwright
 
+        is_docker = os.environ.get("DOCKER_CONTAINER", "").lower() in ("1", "true")
+        launch_args = []
+        if is_docker:
+            headless = True
+            launch_args = ["--no-sandbox", "--disable-dev-shm-usage"]
+
         self._pw = await async_playwright().start()
-        self._browser = await self._pw.chromium.launch(headless=headless)
+        self._browser = await self._pw.chromium.launch(
+            headless=headless, args=launch_args,
+        )
         self._context = await self._browser.new_context(
             viewport={"width": 1920, "height": 1080},
             user_agent=(
