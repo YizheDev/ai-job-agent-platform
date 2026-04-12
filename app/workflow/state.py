@@ -12,6 +12,9 @@ from typing import TypedDict
 class JobAgentState(TypedDict, total=False):
     """全局共享状态（所有智能体读写）"""
 
+    # === 用户标识 ===
+    user_name: str
+
     # === 基础输入 ===
     resume_path: str
     jd_text: str

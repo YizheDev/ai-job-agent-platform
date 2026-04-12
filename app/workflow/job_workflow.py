@@ -7,6 +7,8 @@
 
 from __future__ import annotations
 
+import threading
+
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, StateGraph
 
@@ -71,6 +73,7 @@ def _route_after_exception(state: JobAgentState) -> str:
 
 def record_result_node(state: JobAgentState) -> dict:
     """记录投递结果到数据库"""
+    user_name = state.get("user_name", "")
     company = state.get("company", "未知公司")
     position = state.get("position", "未知岗位")
     position_url = state.get("position_url", "")
@@ -96,9 +99,10 @@ def record_result_node(state: JobAgentState) -> dict:
             resume_id=resume_id,
             match_score=match_score,
             status=db_status,
+            user_name=user_name,
+            error_code=error_code,
+            error_msg=error_msg,
         )
-        if error_code:
-            DeliveryRecordCRUD.update_status(record_id, db_status, error_code, error_msg)
         logger.info("投递结果已记录: id=%d, company=%s, status=%s", record_id, company, db_status)
         return {"delivery_record_id": record_id, "delivery_status": db_status}
     except Exception as e:
@@ -194,11 +198,14 @@ def get_workflow_graph_mermaid() -> str:
 
 # 全局工作流单例
 _workflow_instance = None
+_workflow_lock = threading.Lock()
 
 
 def get_workflow():
-    """获取全局工作流实例（单例）"""
+    """获取全局工作流实例（单例，线程安全）"""
     global _workflow_instance
     if _workflow_instance is None:
-        _workflow_instance = build_workflow()
+        with _workflow_lock:
+            if _workflow_instance is None:
+                _workflow_instance = build_workflow()
     return _workflow_instance
