@@ -100,10 +100,11 @@ CREATE TABLE IF NOT EXISTS jd_match_record (
 def get_connection() -> sqlite3.Connection:
     """获取数据库连接（启用WAL模式和外键约束）"""
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(str(DB_PATH))
+    conn = sqlite3.connect(str(DB_PATH), timeout=10)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys=ON")
+    conn.execute("PRAGMA busy_timeout=5000")
     return conn
 
 
@@ -125,8 +126,9 @@ def _migrate_add_user_name(conn: sqlite3.Connection) -> None:
             conn.execute(
                 f"ALTER TABLE {table} ADD COLUMN user_name TEXT DEFAULT ''"
             )
-        except sqlite3.OperationalError:
-            pass
+        except sqlite3.OperationalError as e:
+            if "duplicate column" not in str(e).lower():
+                logger.warning("迁移表 %s 时出现异常: %s", table, e)
 
     conn.execute("""
         CREATE TABLE IF NOT EXISTS sys_config_new (
@@ -155,13 +157,16 @@ def _migrate_add_user_name(conn: sqlite3.Connection) -> None:
 
 def init_database() -> None:
     """初始化数据库（创建所有表，幂等操作）"""
+    conn = None
     try:
         conn = get_connection()
         conn.executescript(CREATE_TABLES_SQL)
         _migrate_add_user_name(conn)
         conn.commit()
-        conn.close()
         logger.info("数据库初始化成功: %s", DB_PATH)
-    except sqlite3.Error as e:
+    except Exception as e:
         logger.error("数据库初始化失败: %s", e)
         raise
+    finally:
+        if conn is not None:
+            conn.close()

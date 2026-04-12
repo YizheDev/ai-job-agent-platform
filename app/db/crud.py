@@ -22,7 +22,11 @@ logger = get_logger(__name__)
 @contextmanager
 def _get_db():
     """数据库连接上下文管理器（自动提交/回滚/关闭）"""
-    conn = get_connection()
+    try:
+        conn = get_connection()
+    except Exception as e:
+        logger.error("数据库连接失败: %s", e)
+        raise DatabaseError(details=f"数据库连接失败: {e}")
     try:
         yield conn
         conn.commit()
@@ -79,10 +83,16 @@ class ResumeCRUD:
             return resume_id
 
     @staticmethod
-    def get_by_id(resume_id: int) -> dict | None:
-        """根据ID查询简历"""
+    def get_by_id(resume_id: int, user_name: str = "") -> dict | None:
+        """根据ID查询简历（传入 user_name 时校验归属）"""
         with _get_db() as conn:
-            row = conn.execute("SELECT * FROM resume WHERE id = ?", (resume_id,)).fetchone()
+            if user_name:
+                row = conn.execute(
+                    "SELECT * FROM resume WHERE id = ? AND user_name = ?",
+                    (resume_id, user_name),
+                ).fetchone()
+            else:
+                row = conn.execute("SELECT * FROM resume WHERE id = ?", (resume_id,)).fetchone()
             return _row_to_dict(row)
 
     @staticmethod
@@ -149,15 +159,21 @@ class ResumeCRUD:
             return True
 
     @staticmethod
-    def delete(resume_id: int) -> bool:
-        """删除简历 (同时删除关联的优化版本)"""
+    def delete(resume_id: int, user_name: str = "") -> bool:
+        """删除简历 (同时删除关联的优化版本；传入 user_name 时校验归属)"""
         with _get_db() as conn:
-            row = conn.execute("SELECT id FROM resume WHERE id = ?", (resume_id,)).fetchone()
+            if user_name:
+                row = conn.execute(
+                    "SELECT id FROM resume WHERE id = ? AND user_name = ?",
+                    (resume_id, user_name),
+                ).fetchone()
+            else:
+                row = conn.execute("SELECT id FROM resume WHERE id = ?", (resume_id,)).fetchone()
             if not row:
                 return False
             conn.execute("DELETE FROM resume WHERE parent_id = ?", (resume_id,))
             conn.execute("DELETE FROM resume WHERE id = ?", (resume_id,))
-            logger.info("删除简历记录: id=%d", resume_id)
+            logger.info("删除简历记录: id=%d, user=%s", resume_id, user_name)
             return True
 
 
@@ -179,16 +195,20 @@ class DeliveryRecordCRUD:
         cover_letter: str = "",
         status: str = "pending",
         user_name: str = "",
+        error_code: str = "",
+        error_msg: str = "",
     ) -> int:
         """创建投递记录"""
         with _get_db() as conn:
             cursor = conn.execute(
                 """INSERT INTO delivery_record
                    (user_name, company, position, position_url, platform, resume_id,
-                    match_score, match_feedback, cover_letter, status)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    match_score, match_feedback, cover_letter, status,
+                    error_code, error_msg)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (user_name, company, position, position_url, platform, resume_id,
-                 match_score, match_feedback, cover_letter, status),
+                 match_score, match_feedback, cover_letter, status,
+                 error_code, error_msg),
             )
             record_id = cursor.lastrowid
             logger.info("创建投递记录: id=%d, company=%s, user=%s", record_id, company, user_name)
@@ -312,23 +332,45 @@ class DeliveryRecordCRUD:
             }
 
     @staticmethod
-    def update_status(record_id: int, status: str, error_code: str = "", error_msg: str = "") -> bool:
-        """更新投递状态"""
+    def update_status(
+        record_id: int, status: str,
+        error_code: str = "", error_msg: str = "",
+        user_name: str = "",
+    ) -> bool:
+        """更新投递状态（传入 user_name 时校验归属）"""
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         with _get_db() as conn:
-            conn.execute(
-                "UPDATE delivery_record SET status = ?, error_code = ?, error_msg = ?, update_time = ? WHERE id = ?",
-                (status, error_code, error_msg, now, record_id),
-            )
-            logger.info("更新投递状态: id=%d, status=%s", record_id, status)
+            if user_name:
+                cursor = conn.execute(
+                    "UPDATE delivery_record SET status = ?, error_code = ?, error_msg = ?, update_time = ? "
+                    "WHERE id = ? AND user_name = ?",
+                    (status, error_code, error_msg, now, record_id, user_name),
+                )
+            else:
+                cursor = conn.execute(
+                    "UPDATE delivery_record SET status = ?, error_code = ?, error_msg = ?, update_time = ? "
+                    "WHERE id = ?",
+                    (status, error_code, error_msg, now, record_id),
+                )
+            if cursor.rowcount == 0:
+                return False
+            logger.info("更新投递状态: id=%d, status=%s, user=%s", record_id, status, user_name)
             return True
 
     @staticmethod
-    def delete(record_id: int) -> bool:
-        """删除投递记录"""
+    def delete(record_id: int, user_name: str = "") -> bool:
+        """删除投递记录（传入 user_name 时校验归属）"""
         with _get_db() as conn:
-            conn.execute("DELETE FROM delivery_record WHERE id = ?", (record_id,))
-            logger.info("删除投递记录: id=%d", record_id)
+            if user_name:
+                cursor = conn.execute(
+                    "DELETE FROM delivery_record WHERE id = ? AND user_name = ?",
+                    (record_id, user_name),
+                )
+            else:
+                cursor = conn.execute("DELETE FROM delivery_record WHERE id = ?", (record_id,))
+            if cursor.rowcount == 0:
+                return False
+            logger.info("删除投递记录: id=%d, user=%s", record_id, user_name)
             return True
 
 
@@ -385,11 +427,11 @@ class SysConfigCRUD:
     def delete(key: str, user_name: str = "") -> bool:
         """删除配置"""
         with _get_db() as conn:
-            conn.execute(
+            cursor = conn.execute(
                 "DELETE FROM sys_config WHERE config_key = ? AND user_name = ?",
                 (key, user_name),
             )
-            return True
+            return cursor.rowcount > 0
 
 
 # ================================================================
@@ -447,8 +489,8 @@ class ExceptionLogCRUD:
     def delete(log_id: int) -> bool:
         """删除异常日志"""
         with _get_db() as conn:
-            conn.execute("DELETE FROM exception_log WHERE id = ?", (log_id,))
-            return True
+            cursor = conn.execute("DELETE FROM exception_log WHERE id = ?", (log_id,))
+            return cursor.rowcount > 0
 
     @staticmethod
     def cleanup_old(days: int = 30) -> int:
@@ -516,5 +558,5 @@ class JDMatchRecordCRUD:
     def delete(record_id: int) -> bool:
         """删除匹配记录"""
         with _get_db() as conn:
-            conn.execute("DELETE FROM jd_match_record WHERE id = ?", (record_id,))
-            return True
+            cursor = conn.execute("DELETE FROM jd_match_record WHERE id = ?", (record_id,))
+            return cursor.rowcount > 0
