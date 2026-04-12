@@ -19,6 +19,10 @@ RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
 WORKDIR /app
 
+# 国内 pip 镜像加速（阿里云/腾讯云服务器必加）
+RUN pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple \
+    && pip config set global.trusted-host pypi.tuna.tsinghua.edu.cn
+
 # 先复制依赖清单，利用 Docker 层缓存
 # 锁定 playwright 版本与基础镜像一致，避免浏览器/驱动版本不匹配
 COPY requirements.txt .
