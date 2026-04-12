@@ -8,11 +8,16 @@
 langgraph>=0.3.0
 langchain>=0.3.0
 langchain-openai>=0.3.0
-langchain-community>=0.3.0
+
+# --- LLM API (登录校验直接使用) ---
+openai>=1.0.0
 
 # --- 浏览器自动化 ---
 playwright>=1.48.0
-browser-use>=0.1.40
+DrissionPage>=4.0.0
+
+# --- BOSS 薪资字体解码 ---
+fonttools>=4.50.0
 
 # --- 简历解析（python-docx + PyPDF2 替代 pyresume） ---
 python-docx>=1.1.0
@@ -25,6 +30,9 @@ python-dotenv>=1.0.1
 
 # --- 前端UI ---
 gradio>=5.6.0
+
+# --- 图像处理 (BOSS 账号页截图展示) ---
+pillow>=10.0.0
 
 # --- 加密安全 ---
 cryptography>=43.0.0

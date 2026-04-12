@@ -64,16 +64,18 @@ class TestResumeCRUD:
         assert ResumeCRUD.get_by_id(r2)["is_default"] == 1
         assert ResumeCRUD.get_by_id(r1)["is_default"] == 0
 
-    def test_delete_original_fails(self):
+    def test_delete(self):
         rid = ResumeCRUD.create("test.pdf", "/test.pdf", "pdf", is_original=True)
         ok = ResumeCRUD.delete(rid)
-        assert not ok
+        assert ok
+        assert ResumeCRUD.get_by_id(rid) is None
 
-    def test_delete_non_original(self):
+    def test_delete_with_children(self):
         parent = ResumeCRUD.create("orig.pdf", "/orig.pdf", "pdf")
         child = ResumeCRUD.create("opt.pdf", "/opt.pdf", "pdf", is_original=False, parent_id=parent)
-        ok = ResumeCRUD.delete(child)
+        ok = ResumeCRUD.delete(parent)
         assert ok
+        assert ResumeCRUD.get_by_id(parent) is None
         assert ResumeCRUD.get_by_id(child) is None
 
     def test_count_versions(self):
