@@ -54,6 +54,12 @@ def _load_settings():
 def _save_risk_settings(max_daily, min_delay, max_delay, start_hour, end_hour, threshold):
     """保存风控设置到 .env 并热更新"""
     try:
+        min_delay, max_delay = int(min_delay), int(max_delay)
+        start_hour, end_hour = int(start_hour), int(end_hour)
+        if min_delay > max_delay:
+            return f"保存失败: 最小延时 ({min_delay}s) 不能大于最大延时 ({max_delay}s)"
+        if start_hour >= end_hour:
+            return f"保存失败: 开始时段 ({start_hour}:00) 必须早于结束时段 ({end_hour}:00)"
         update_env_file({
             "MAX_DAILY_DELIVERY": str(int(max_daily)),
             "MIN_DELAY_SECONDS": str(int(min_delay)),
@@ -70,26 +76,36 @@ def _save_risk_settings(max_daily, min_delay, max_delay, start_hour, end_hour, t
 
 
 def _save_api_settings(api_key, base_url, model):
-    """保存 API 设置到 .env 并热更新"""
+    """保存 API 设置到 .env 并热更新 (含 API Key 校验)"""
+    if not api_key or not api_key.strip():
+        return "保存失败: API Key 不能为空"
     try:
+        from app.utils.auth_util import validate_api_key
+        result = validate_api_key(api_key.strip(), base_url=base_url, model=model)
+        if not result.success:
+            return f"保存失败: {result.message}"
         update_env_file({
-            "LLM_API_KEY": api_key,
+            "LLM_API_KEY": api_key.strip(),
             "LLM_BASE_URL": base_url,
             "LLM_MODEL": model,
         })
         reload_settings()
-        logger.info("API 设置已保存")
-        return "✓ API 配置保存成功, 已立即生效"
+        logger.info("API 设置已保存 (校验通过)")
+        return "✓ API 配置校验通过并保存成功, 已立即生效"
     except Exception as e:
         return f"保存失败: {e}"
 
 
 def _do_wipe():
     """清除所有数据"""
-    ok = wipe_all_data()
-    if ok:
-        return "✓ 所有本地数据已清除 (不可恢复)"
-    return "数据清除失败"
+    try:
+        ok = wipe_all_data()
+        if ok:
+            return "✓ 所有本地数据已清除 (不可恢复)"
+        return "数据清除失败"
+    except Exception as e:
+        logger.error("数据清除异常: %s", e)
+        return f"数据清除失败: {e}"
 
 
 def create_settings_page():
@@ -122,7 +138,7 @@ def create_settings_page():
                     step=1, label="投递开始时段",
                 )
                 end_hour = gr.Slider(
-                    0, 23, value=settings.DELIVERY_END_HOUR,
+                    1, 24, value=settings.DELIVERY_END_HOUR,
                     step=1, label="投递结束时段",
                 )
             threshold = gr.Slider(

@@ -79,13 +79,18 @@ def create_resume_page(login_state):
     def _upload_and_parse(file, state):
         user_name = state.get("user_name", "") if state else ""
         if file is None:
-            return "请选择文件", "", _get_resume_list(user_name)
+            yield "请选择文件", "", _get_resume_list(user_name)
+            return
+
+        yield "⏳ 正在上传并解析简历, 请稍候...", "", gr.update()
+
         try:
             saved_path = save_uploaded_file(file.name if hasattr(file, "name") else str(file))
             agent_state = {"resume_path": saved_path, "user_name": user_name}
             result = parse_resume_node(agent_state)
             if result.get("error_code"):
-                return f"解析失败: {result.get('error_msg', '')}", "", _get_resume_list(user_name)
+                yield f"解析失败: {result.get('error_msg', '')}", "", _get_resume_list(user_name)
+                return
             struct = result.get("resume_struct", {})
             info_lines = [
                 f"**姓名**: {struct.get('name', '未提取')}",
@@ -95,16 +100,17 @@ def create_resume_page(login_state):
                 f"**工作年限**: {struct.get('experience_years', 0)} 年",
                 f"**技能**: {', '.join(struct.get('skills', []))}",
             ]
-            return "✓ 解析成功", "\n".join(info_lines), _get_resume_list(user_name)
+            yield "✓ 解析成功", "\n".join(info_lines), _get_resume_list(user_name)
         except Exception as e:
             logger.error("简历上传失败: %s", e)
-            return f"上传失败: {e}", "", _get_resume_list(user_name)
+            yield f"上传失败: {e}", "", _get_resume_list(user_name)
 
-    def _view_resume(sel_id):
+    def _view_resume(sel_id, state):
+        user_name = state.get("user_name", "") if state else ""
         if not sel_id:
             return "请选择简历"
         try:
-            resume = ResumeCRUD.get_by_id(int(sel_id))
+            resume = ResumeCRUD.get_by_id(int(sel_id), user_name=user_name)
             if not resume:
                 return "简历不存在"
             struct = json.loads(resume.get("struct_data", "{}"))
@@ -131,7 +137,7 @@ def create_resume_page(login_state):
         if not sel_id:
             return "请选择简历", _get_resume_list(user_name)
         try:
-            ok = ResumeCRUD.delete(int(sel_id))
+            ok = ResumeCRUD.delete(int(sel_id), user_name=user_name)
             if ok:
                 return "✓ 删除成功", _get_resume_list(user_name)
             return "删除失败", _get_resume_list(user_name)
@@ -170,7 +176,7 @@ def create_resume_page(login_state):
         inputs=[file_input, login_state],
         outputs=[status_msg, parse_result, resume_table],
     )
-    view_btn.click(fn=_view_resume, inputs=[selected_id], outputs=[detail_display])
+    view_btn.click(fn=_view_resume, inputs=[selected_id, login_state], outputs=[detail_display])
     delete_btn.click(
         fn=_delete_resume,
         inputs=[selected_id, login_state],

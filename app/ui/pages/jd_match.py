@@ -121,15 +121,24 @@ def create_jd_match_page(login_state):
     def _do_match(resume_choice, jd_text, state):
         user_name = state.get("user_name", "") if state else ""
         if not resume_choice:
-            return "", "请先选择简历", "", "", ""
+            yield "", "请先选择简历", "", "", ""
+            return
         if not jd_text or len(jd_text.strip()) < 50:
-            return "", "JD 文本过短, 请输入至少 50 字的岗位描述", "", "", ""
+            yield "", "JD 文本过短, 请输入至少 50 字的岗位描述", "", "", ""
+            return
+
+        yield (
+            '<div style="color:#165DFF;padding:24px;text-align:center;">'
+            "⏳ 正在调用 AI 匹配分析, 请稍候...</div>",
+            "AI 匹配分析中...", "", "", "",
+        )
 
         try:
             resume_id = int(resume_choice.split(":")[0])
-            resume = ResumeCRUD.get_by_id(resume_id)
+            resume = ResumeCRUD.get_by_id(resume_id, user_name=user_name)
             if not resume:
-                return "", "简历不存在", "", "", ""
+                yield "", "简历不存在", "", "", ""
+                return
 
             resume_struct = json.loads(resume.get("struct_data", "{}"))
             agent_state = {
@@ -141,7 +150,8 @@ def create_jd_match_page(login_state):
 
             result = jd_match_node(agent_state)
             if result.get("error_code"):
-                return "", f"匹配失败: {result.get('error_msg')}", "", "", ""
+                yield "", f"匹配失败: {result.get('error_msg')}", "", "", ""
+                return
 
             score = result.get("match_score", 0)
             score_html = _render_score_ring(score)
@@ -166,10 +176,10 @@ def create_jd_match_page(login_state):
             if score < threshold:
                 feedback += f"\n\n⚠ 匹配分数低于阈值 ({threshold}), 建议优化简历后再投递"
 
-            return score_html, jd_info, tags_html, feedback, resume_choice
+            yield score_html, jd_info, tags_html, feedback, resume_choice
         except Exception as e:
             logger.error("匹配异常: %s", e)
-            return "", f"匹配异常: {e}", "", "", ""
+            yield "", f"匹配异常: {e}", "", "", ""
 
     refresh_resume_btn.click(
         fn=_refresh_choices,

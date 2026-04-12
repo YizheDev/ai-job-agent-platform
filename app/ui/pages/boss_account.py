@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import html as html_mod
 import io
+import threading
 
 import gradio as gr
 from PIL import Image
@@ -132,108 +133,145 @@ def _connect_boss(mode_label, cdp_port):
     mode = _mode_from_label(mode_label)
     c = get_crawler()
 
+    _UP = gr.update()
+
     if c.is_running:
         if c.is_logged_in:
-            profile = c.get_user_profile()
+            try:
+                profile = c.get_user_profile()
+            except Exception as pe:
+                logger.warning("获取个人信息失败 (不影响连接): %s", pe)
+                profile = {}
             yield (
                 None, _status_html(), "已处于连接状态",
                 _build_profile_html(profile),
                 gr.update(visible=False), gr.update(visible=True),
+                gr.Timer(active=False),
             )
             return
-        yield (
-            None, _status_html(), "已连接, 请检查登录状态",
-            "", gr.update(visible=True), gr.update(visible=False),
-        )
+        if c._is_cdp:
+            yield (
+                None, _status_html(),
+                "已连接, 请在 Chrome 浏览器窗口中完成登录, 然后点击「检查登录状态」",
+                "", gr.update(visible=True), gr.update(visible=False),
+                gr.Timer(active=False),
+            )
+        else:
+            img_bytes = c.capture_login_screenshot()
+            img = Image.open(io.BytesIO(img_bytes)) if img_bytes else None
+            yield (
+                img, _status_html(), "已连接, 等待登录中...",
+                "", gr.update(visible=True), gr.update(visible=False),
+                gr.Timer(active=True),
+            )
         return
 
-    # -- 第一阶段: 立即显示加载动画 --
     if mode == ConnectionMode.CDP:
         loading_msg = "正在启动 Chrome 并连接 BOSS 直聘..."
     else:
         loading_msg = "正在启动内置浏览器..."
 
-    yield (
-        gr.update(), _loading_html(loading_msg), loading_msg,
-        gr.update(), gr.update(), gr.update(),
-    )
+    yield (_UP, _loading_html(loading_msg), loading_msg, _UP, _UP, _UP, _UP)
 
-    # -- 第二阶段: 执行连接 --
-    if mode == ConnectionMode.CDP:
-        port = int(cdp_port) if cdp_port else 9222
-        msg = c.launch_cdp(port)
+    try:
+        if mode == ConnectionMode.CDP:
+            port = int(cdp_port) if cdp_port else 9222
+            msg = c.launch_cdp(port)
 
+            if "失败" in msg or "超时" in msg:
+                yield (
+                    None, _status_html(), msg,
+                    "", gr.update(visible=True), gr.update(visible=False),
+                    gr.Timer(active=False),
+                )
+                return
+
+            if c.is_logged_in:
+                yield (
+                    _UP,
+                    _loading_html("连接成功, 正在获取个人信息..."),
+                    "连接成功, 正在获取个人信息...",
+                    _UP, _UP, _UP, _UP,
+                )
+                try:
+                    profile = c.get_user_profile()
+                except Exception as pe:
+                    logger.warning("获取个人信息失败 (不影响连接): %s", pe)
+                    profile = {}
+                yield (
+                    None, _status_html(), msg,
+                    _build_profile_html(profile),
+                    gr.update(visible=False), gr.update(visible=True),
+                    gr.Timer(active=False),
+                )
+                return
+
+            yield (
+                None, _status_html(), msg,
+                "", gr.update(visible=True), gr.update(visible=False),
+                gr.Timer(active=False),
+            )
+            return
+
+        # Playwright mode
+        msg = c.launch_playwright(headless=True)
         if "失败" in msg:
             yield (
                 None, _status_html(), msg,
                 "", gr.update(visible=True), gr.update(visible=False),
+                gr.Timer(active=False),
             )
             return
 
         if c.is_logged_in:
             yield (
-                gr.update(),
+                _UP,
                 _loading_html("连接成功, 正在获取个人信息..."),
                 "连接成功, 正在获取个人信息...",
-                gr.update(), gr.update(), gr.update(),
+                _UP, _UP, _UP, _UP,
             )
-            profile = c.get_user_profile()
+            try:
+                profile = c.get_user_profile()
+            except Exception as pe:
+                logger.warning("获取个人信息失败 (不影响连接): %s", pe)
+                profile = {}
             yield (
                 None, _status_html(), msg,
                 _build_profile_html(profile),
                 gr.update(visible=False), gr.update(visible=True),
+                gr.Timer(active=False),
             )
             return
 
+        yield (_UP, _loading_html("正在打开登录页面..."),
+               "正在打开登录页面...", _UP, _UP, _UP, _UP)
+        login_msg = c.open_login_page()
+        img_bytes = c.capture_login_screenshot()
+        img = Image.open(io.BytesIO(img_bytes)) if img_bytes else None
         yield (
-            None, _status_html(), msg,
+            img, _status_html(), login_msg,
             "", gr.update(visible=True), gr.update(visible=False),
+            gr.Timer(active=True),
         )
-        return
 
-    # Playwright mode
-    msg = c.launch_playwright(headless=True)
-    if "失败" in msg:
+    except Exception as e:
+        logger.error("连接过程中出现异常: %s", e)
         yield (
-            None, _status_html(), msg,
+            None, _status_html(), f"连接异常: {e}",
             "", gr.update(visible=True), gr.update(visible=False),
+            gr.Timer(active=False),
         )
-        return
-
-    if c.is_logged_in:
-        yield (
-            gr.update(),
-            _loading_html("连接成功, 正在获取个人信息..."),
-            "连接成功, 正在获取个人信息...",
-            gr.update(), gr.update(), gr.update(),
-        )
-        profile = c.get_user_profile()
-        yield (
-            None, _status_html(), msg,
-            _build_profile_html(profile),
-            gr.update(visible=False), gr.update(visible=True),
-        )
-        return
-
-    yield (
-        gr.update(),
-        _loading_html("正在打开登录页面..."),
-        "正在打开登录页面...",
-        gr.update(), gr.update(), gr.update(),
-    )
-    login_msg = c.open_login_page()
-    img_bytes = c.capture_login_screenshot()
-    img = Image.open(io.BytesIO(img_bytes)) if img_bytes else None
-    yield (
-        img, _status_html(), login_msg,
-        "", gr.update(visible=True), gr.update(visible=False),
-    )
 
 
 def _refresh_qr():
     c = get_crawler()
     if not c.is_running:
         return None, _status_html(), "请先点击「连接 BOSS 直聘」"
+    if c._is_cdp:
+        return (
+            None, _status_html(),
+            "Chrome 模式下请直接在浏览器窗口中操作, 登录后点击「检查登录状态」",
+        )
     c.open_login_page()
     img_bytes = c.capture_login_screenshot()
     img = Image.open(io.BytesIO(img_bytes)) if img_bytes else None
@@ -242,68 +280,144 @@ def _refresh_qr():
 
 def _check_login():
     c = get_crawler()
+    _UP = gr.update()
     if not c.is_running:
         yield (
             _status_html(), "请先点击「连接 BOSS 直聘」",
             "", gr.update(visible=True), gr.update(visible=False),
+            gr.Timer(active=False),
         )
         return
 
-    yield (
-        _loading_html("正在检查登录状态..."),
-        "正在检查登录状态...",
-        gr.update(), gr.update(), gr.update(),
-    )
+    yield (_loading_html("正在检查登录状态..."),
+           "正在检查登录状态...", _UP, _UP, _UP, _UP)
 
-    msg = c.check_login()
-    if c.is_logged_in:
-        yield (
-            _loading_html("登录成功, 正在获取个人信息..."),
-            "正在获取个人信息...",
-            gr.update(), gr.update(), gr.update(),
-        )
-        profile = c.get_user_profile()
+    enable_timer = not c._is_cdp
+
+    try:
+        msg = c.check_login()
+        if c.is_logged_in:
+            yield (_loading_html("登录成功, 正在获取个人信息..."),
+                   "正在获取个人信息...", _UP, _UP, _UP, _UP)
+            try:
+                profile = c.get_user_profile()
+            except Exception as pe:
+                logger.warning("获取个人信息失败 (不影响登录): %s", pe)
+                profile = {}
+            yield (
+                _status_html(), msg,
+                _build_profile_html(profile),
+                gr.update(visible=False), gr.update(visible=True),
+                gr.Timer(active=False),
+            )
+            return
+
         yield (
             _status_html(), msg,
-            _build_profile_html(profile),
-            gr.update(visible=False), gr.update(visible=True),
+            "", gr.update(visible=True), gr.update(visible=False),
+            gr.Timer(active=enable_timer),
         )
-        return
-
-    yield (
-        _status_html(), msg,
-        "", gr.update(visible=True), gr.update(visible=False),
-    )
+    except Exception as e:
+        logger.error("检查登录状态异常: %s", e)
+        yield (
+            _status_html(), f"检查登录异常: {e}",
+            "", gr.update(visible=True), gr.update(visible=False),
+            gr.Timer(active=False),
+        )
 
 
 def _disconnect():
-    yield (
-        gr.update(), _loading_html("正在断开连接..."),
-        "正在断开连接...",
-        gr.update(), gr.update(), gr.update(),
-    )
-    c = get_crawler()
-    msg = c.close()
-    yield (
-        None, _status_html(), msg,
-        "", gr.update(visible=True), gr.update(visible=False),
-    )
+    _UP = gr.update()
+    yield (_UP, _loading_html("正在断开连接..."),
+           "正在断开连接...", _UP, _UP, _UP, _UP)
+    try:
+        c = get_crawler()
+        msg = c.close()
+        yield (
+            None, _status_html(), msg,
+            "", gr.update(visible=True), gr.update(visible=False),
+            gr.Timer(active=False),
+        )
+    except Exception as e:
+        logger.error("断开连接异常: %s", e)
+        yield (
+            None, _status_html(), f"断开连接异常: {e}",
+            "", gr.update(visible=True), gr.update(visible=False),
+            gr.Timer(active=False),
+        )
 
 
 def _do_logout():
-    yield (
-        gr.update(), _loading_html("正在退出登录并清理数据..."),
-        "正在退出登录...",
-        gr.update(), gr.update(), gr.update(),
-    )
+    _UP = gr.update()
+    yield (_UP, _loading_html("正在退出登录并清理数据..."),
+           "正在退出登录...", _UP, _UP, _UP, _UP)
+    try:
+        c = get_crawler()
+        if c.is_running:
+            c.close()
+        clear_cookie("boss_zhipin")
+        yield (
+            None, _status_html(), "已退出登录, Cookie 已清除",
+            "", gr.update(visible=True), gr.update(visible=False),
+            gr.Timer(active=False),
+        )
+    except Exception as e:
+        logger.error("退出登录异常: %s", e)
+        yield (
+            None, _status_html(), f"退出登录异常: {e}",
+            "", gr.update(visible=True), gr.update(visible=False),
+            gr.Timer(active=False),
+        )
+
+
+# ------------------------------------------------------------------
+# Auto-poll login status (Timer callback)
+# ------------------------------------------------------------------
+
+_auto_check_lock = threading.Lock()
+
+
+def _auto_check_login():
+    """Timer callback: login status polling for Playwright headless mode only.
+
+    CDP mode MUST NOT auto-poll — any Playwright command (locator, inner_text,
+    even URL reads via CDP protocol) can cause visible page flickering and
+    prevent the user from logging in. In CDP mode the user interacts with
+    Chrome directly and clicks "检查登录状态" manually.
+    """
     c = get_crawler()
-    if c.is_running:
-        c.close()
-    clear_cookie("boss_zhipin")
-    yield (
-        None, _status_html(), "已退出登录, Cookie 已清除",
-        "", gr.update(visible=True), gr.update(visible=False),
-    )
+    _UP = gr.update()
+
+    if not c.is_running or c.is_logged_in:
+        return (_status_html(), _UP, _UP, _UP, _UP, gr.Timer(active=False))
+
+    if c._is_cdp:
+        return (_status_html(), _UP, _UP, _UP, _UP, gr.Timer(active=False))
+
+    if not _auto_check_lock.acquire(blocking=False):
+        return (_UP, _UP, _UP, _UP, _UP, gr.Timer(active=True))
+
+    try:
+        if not c.quick_check_login():
+            return (_UP, _UP, _UP, _UP, _UP, gr.Timer(active=True))
+
+        if c.confirm_login_no_navigate():
+            try:
+                profile = c.get_user_profile()
+            except Exception:
+                profile = {}
+            return (
+                _status_html(),
+                "✓ 登录成功, Cookie 已保存 (自动检测到登录)",
+                _build_profile_html(profile),
+                gr.update(visible=False), gr.update(visible=True),
+                gr.Timer(active=False),
+            )
+        return (_status_html(), _UP, _UP, _UP, _UP, gr.Timer(active=True))
+    except Exception:
+        return (_UP, _UP, _UP, _UP, _UP, gr.Timer(active=True))
+    finally:
+        _auto_check_lock.release()
 
 
 # ------------------------------------------------------------------
@@ -311,41 +425,57 @@ def _do_logout():
 # ------------------------------------------------------------------
 
 def _load_greeting(state) -> str:
-    user_name = state.get("user_name", "") if state else ""
-    val = SysConfigCRUD.get(CFG_GREETING, user_name=user_name)
-    greeting = val if val else DEFAULT_GREETING
-    get_crawler().greeting = greeting
-    return greeting
+    try:
+        user_name = state.get("user_name", "") if state else ""
+        val = SysConfigCRUD.get(CFG_GREETING, user_name=user_name)
+        greeting = val if val else DEFAULT_GREETING
+        get_crawler().greeting = greeting
+        return greeting
+    except Exception as e:
+        logger.error("加载打招呼话术失败: %s", e)
+        return DEFAULT_GREETING
 
 
 def _save_greeting(text: str, state) -> str:
-    user_name = state.get("user_name", "") if state else ""
-    cleaned = text.strip()
-    SysConfigCRUD.set(CFG_GREETING, cleaned, user_name=user_name)
-    get_crawler().greeting = cleaned
-    return "打招呼话术已保存"
+    try:
+        user_name = state.get("user_name", "") if state else ""
+        cleaned = text.strip()
+        SysConfigCRUD.set(CFG_GREETING, cleaned, user_name=user_name)
+        get_crawler().greeting = cleaned
+        return "打招呼话术已保存"
+    except Exception as e:
+        logger.error("保存打招呼话术失败: %s", e)
+        return f"保存失败: {e}"
 
 
 def _load_blacklists(state) -> tuple[str, str]:
-    user_name = state.get("user_name", "") if state else ""
-    companies = (
-        SysConfigCRUD.get(CFG_BLACKLIST_COMPANY, user_name=user_name) or ""
-    )
-    titles = (
-        SysConfigCRUD.get(CFG_BLACKLIST_TITLE, user_name=user_name) or ""
-    )
-    return companies, titles
+    try:
+        user_name = state.get("user_name", "") if state else ""
+        companies = (
+            SysConfigCRUD.get(CFG_BLACKLIST_COMPANY, user_name=user_name) or ""
+        )
+        titles = (
+            SysConfigCRUD.get(CFG_BLACKLIST_TITLE, user_name=user_name) or ""
+        )
+        return companies, titles
+    except Exception as e:
+        logger.error("加载黑名单失败: %s", e)
+        return "", ""
 
 
 def _save_blacklists(companies: str, titles: str, state) -> str:
-    user_name = state.get("user_name", "") if state else ""
-    SysConfigCRUD.set(
-        CFG_BLACKLIST_COMPANY, companies.strip(), user_name=user_name,
-    )
-    SysConfigCRUD.set(
-        CFG_BLACKLIST_TITLE, titles.strip(), user_name=user_name,
-    )
-    return "黑名单已保存"
+    try:
+        user_name = state.get("user_name", "") if state else ""
+        SysConfigCRUD.set(
+            CFG_BLACKLIST_COMPANY, companies.strip(), user_name=user_name,
+        )
+        SysConfigCRUD.set(
+            CFG_BLACKLIST_TITLE, titles.strip(), user_name=user_name,
+        )
+        return "黑名单已保存"
+    except Exception as e:
+        logger.error("保存黑名单失败: %s", e)
+        return f"保存失败: {e}"
 
 
 # ------------------------------------------------------------------
@@ -444,14 +574,16 @@ def create_boss_account_page(login_state):
                     "**使用说明**\n\n"
                     "**Chrome 模式 (推荐):**\n"
                     "1. 点击「连接 BOSS 直聘」→ Chrome 自动启动\n"
-                    "2. 首次使用: 在弹出的 Chrome 中登录 BOSS 直聘\n"
-                    "3. 登录后点击「检查登录状态」\n"
+                    "2. **在弹出的 Chrome 窗口中**登录 BOSS 直聘\n"
+                    "3. 登录后点击「检查登录状态」或等待自动检测\n"
                     "4. 后续使用会自动记住登录\n\n"
                     "**内置浏览器模式 (备用):**\n"
                     "1. 点击「连接 BOSS 直聘」\n"
                     "2. 左侧显示二维码, 用 BOSS 直聘 APP 扫码\n"
-                    "3. 扫码后点击「检查登录状态」\n\n"
-                    "> 连续失败时系统会自动切换备用方案"
+                    "3. 系统自动检测登录状态\n\n"
+                    "> **注意**: Chrome 模式下请直接在 Chrome 浏览器中操作, "
+                    "左侧会显示 Chrome 页面截图供参考\n\n"
+                    "> 登录成功后即可前往「自动投递」页面搜索和投递岗位"
                 )
 
     # ==================== 打招呼话术 ====================
@@ -509,9 +641,12 @@ def create_boss_account_page(login_state):
 
     # ==================== Event bindings ====================
 
+    auto_poll_timer = gr.Timer(value=8, active=False)
+
     _connect_outputs = [
         qr_image, conn_status, op_msg,
         profile_html, login_section, profile_section,
+        auto_poll_timer,
     ]
 
     connect_btn.click(
@@ -523,11 +658,14 @@ def create_boss_account_page(login_state):
     _check_outputs = [
         conn_status, op_msg,
         profile_html, login_section, profile_section,
+        auto_poll_timer,
     ]
     check_login_btn.click(fn=_check_login, outputs=_check_outputs)
 
     disconnect_btn.click(fn=_disconnect, outputs=_connect_outputs)
     logout_boss_btn.click(fn=_do_logout, outputs=_connect_outputs)
+
+    auto_poll_timer.tick(fn=_auto_check_login, outputs=_check_outputs)
 
     load_greeting_btn.click(
         fn=_load_greeting, inputs=[login_state], outputs=[greeting_input],

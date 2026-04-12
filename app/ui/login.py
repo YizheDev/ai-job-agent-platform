@@ -2,7 +2,7 @@
 
 双栏分屏登录页 — 左侧品牌展示 + 右侧登录表单。
 参考 BOSS 直聘登录页设计, 适配项目蓝色主题。
-DeepSeek API Key 实时校验 + 姓名标识。
+LLM API Key 实时校验 + 姓名标识。
 全局登录状态管理 + 退出登录。
 用户名仅允许英文字母 (拼音格式), 用于数据隔离。
 """
@@ -16,11 +16,7 @@ import gradio as gr
 
 from app.core.config import get_settings, reload_settings, update_env_file
 from app.core.logger import get_logger
-from app.utils.auth_util import (
-    DEEPSEEK_BASE_URL,
-    DEEPSEEK_MODEL,
-    validate_deepseek_api_key,
-)
+from app.utils.auth_util import validate_api_key
 
 logger = get_logger(__name__)
 
@@ -462,7 +458,6 @@ def handle_login(user_name: str, api_key: str) -> tuple:
             login_error, header_html, user_label_html
     """
     _keep = gr.skip()
-    _empty_browser = {"logged_in": False, "user_name": "", "api_key": ""}
 
     if not user_name or not user_name.strip():
         return (
@@ -490,7 +485,21 @@ def handle_login(user_name: str, api_key: str) -> tuple:
             _keep, _keep,
         )
 
-    result = validate_deepseek_api_key(api_key)
+    settings = get_settings()
+    try:
+        result = validate_api_key(
+            api_key,
+            base_url=settings.LLM_BASE_URL,
+            model=settings.LLM_MODEL,
+        )
+    except Exception as e:
+        logger.error("API Key 校验过程异常: %s", e)
+        return (
+            {"logged_in": False}, _keep,
+            _keep, _keep, _keep,
+            '<div class="login-error-text">API 校验服务异常, 请稍后重试</div>',
+            _keep, _keep,
+        )
 
     if not result.success:
         safe_msg = html_mod.escape(result.message)
@@ -506,13 +515,9 @@ def handle_login(user_name: str, api_key: str) -> tuple:
     api_key = api_key.strip()
 
     try:
-        update_env_file({
-            "LLM_API_KEY": api_key,
-            "LLM_BASE_URL": DEEPSEEK_BASE_URL,
-            "LLM_MODEL": DEEPSEEK_MODEL,
-        })
+        update_env_file({"LLM_API_KEY": api_key})
         reload_settings()
-        logger.info("用户 [%s] 登录成功, DeepSeek 配置已更新", user_name)
+        logger.info("用户 [%s] 登录成功, API Key 已更新", user_name)
     except Exception as e:
         logger.error("登录后保存配置失败: %s", e)
 

@@ -80,15 +80,20 @@ def create_optimize_page(login_state):
     def _do_optimize(resume_choice, jd, state):
         user_name = state.get("user_name", "") if state else ""
         if not resume_choice:
-            return "请先选择简历", "", "", "", ""
+            yield "请先选择简历", "", "", "", ""
+            return
         if not jd or len(jd.strip()) < 50:
-            return "请先完成 JD 匹配", "", "", "", ""
+            yield "请先完成 JD 匹配", "", "", "", ""
+            return
+
+        yield "⏳ 正在调用 AI 优化简历, 请稍候...", "", "", "", ""
 
         try:
             resume_id = int(resume_choice.split(":")[0])
-            resume = ResumeCRUD.get_by_id(resume_id)
+            resume = ResumeCRUD.get_by_id(resume_id, user_name=user_name)
             if not resume:
-                return "简历不存在", "", "", "", ""
+                yield "简历不存在", "", "", "", ""
+                return
 
             struct = json.loads(resume.get("struct_data", "{}"))
             resume_text = struct.get("optimized_text", "") or json.dumps(
@@ -108,7 +113,8 @@ def create_optimize_page(login_state):
 
             result = optimize_resume_node(agent_state)
             if result.get("error_code"):
-                return f"优化失败: {result.get('error_msg')}", resume_text, "", "", ""
+                yield f"优化失败: {result.get('error_msg')}", resume_text, "", "", ""
+                return
 
             optimized = result.get("optimized_resume", "")
             suggestions = result.get("optimize_suggestions", [])
@@ -118,10 +124,10 @@ def create_optimize_page(login_state):
                 f"**{i + 1}. {s}**" for i, s in enumerate(suggestions)
             )
 
-            return "✓ 优化完成", resume_text, optimized, suggestion_text, cover_letter
+            yield "✓ 优化完成", resume_text, optimized, suggestion_text, cover_letter
         except Exception as e:
             logger.error("简历优化异常: %s", e)
-            return f"优化异常: {e}", "", "", "", ""
+            yield f"优化异常: {e}", "", "", "", ""
 
     optimize_btn.click(
         fn=_do_optimize,

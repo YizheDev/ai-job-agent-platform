@@ -105,41 +105,45 @@ def _search_jobs(keyword, city, hr_filter, state):
 
     yield gr.update(), gr.update(), f"正在搜索「{keyword.strip()}」, 请稍候..."
 
-    jobs = c.search_jobs(keyword.strip(), city or "全国")
-    if not jobs:
-        yield [], [], "未搜索到岗位, 请调整关键词或检查登录状态"
-        return
+    try:
+        jobs = c.search_jobs(keyword.strip(), city or "全国")
+        if not jobs:
+            yield [], [], "未搜索到岗位, 请调整关键词或检查登录状态"
+            return
 
-    if hr_filter and hr_filter != "不限":
-        jobs = [j for j in jobs if hr_filter in j.get("hr_active", "")]
+        if hr_filter and hr_filter != "不限":
+            jobs = [j for j in jobs if hr_filter in j.get("hr_active", "")]
 
-    user_name = state.get("user_name", "") if state else ""
-    bl_co, bl_ti = _load_blacklists(user_name)
-    if bl_co or bl_ti:
-        before = len(jobs)
-        jobs = [
-            j for j in jobs
-            if not any(kw in j.get("company", "") for kw in bl_co)
-            and not any(kw in j.get("title", "") for kw in bl_ti)
+        user_name = state.get("user_name", "") if state else ""
+        bl_co, bl_ti = _load_blacklists(user_name)
+        if bl_co or bl_ti:
+            before = len(jobs)
+            jobs = [
+                j for j in jobs
+                if not any(kw in j.get("company", "") for kw in bl_co)
+                and not any(kw in j.get("title", "") for kw in bl_ti)
+            ]
+            filtered = before - len(jobs)
+            if filtered > 0:
+                logger.info("黑名单过滤掉 %d 个岗位", filtered)
+
+        table = [
+            [
+                i + 1,
+                j["title"],
+                j["company"],
+                j["salary"],
+                j["area"],
+                j.get("hr_active", "") or "-",
+                "✓" if j.get("applied") else "",
+                j["tags"],
+            ]
+            for i, j in enumerate(jobs)
         ]
-        filtered = before - len(jobs)
-        if filtered > 0:
-            logger.info("黑名单过滤掉 %d 个岗位", filtered)
-
-    table = [
-        [
-            i + 1,
-            j["title"],
-            j["company"],
-            j["salary"],
-            j["area"],
-            j.get("hr_active", "") or "-",
-            "✓" if j.get("applied") else "",
-            j["tags"],
-        ]
-        for i, j in enumerate(jobs)
-    ]
-    yield table, jobs, f"搜索完成, 找到 {len(jobs)} 个岗位"
+        yield table, jobs, f"搜索完成, 找到 {len(jobs)} 个岗位"
+    except Exception as e:
+        logger.error("搜索岗位异常: %s", e)
+        yield [], [], f"搜索异常: {e}"
 
 
 def _on_job_select(evt: gr.SelectData, all_jobs):
@@ -193,36 +197,59 @@ def _view_detail(selected_idx, all_jobs):
         return f"获取详情失败: {e}"
 
 
+def _rebuild_table(all_jobs) -> list:
+    """Rebuild the display table from all_jobs (reflects updated applied status)."""
+    c = get_crawler()
+    return [
+        [
+            i + 1,
+            j["title"],
+            j["company"],
+            j["salary"],
+            j["area"],
+            j.get("hr_active", "") or "-",
+            "✓" if j.get("applied") or c.is_applied(j.get("url", "")) else "",
+            j["tags"],
+        ]
+        for i, j in enumerate(all_jobs)
+    ]
+
+
 def _apply_job(selected_idx, all_jobs, resume_choice, state):
     user_name = state.get("user_name", "") if state else ""
     if not selected_idx:
-        return "请先选中一个岗位"
+        return "请先选中一个岗位", gr.update(), gr.update()
     if not resume_choice:
-        return "请先选择要投递的简历"
-
-    err = _preflight_check(user_name)
-    if err:
-        return err
+        return "请先选择要投递的简历", gr.update(), gr.update()
 
     try:
+        err = _preflight_check(user_name)
+        if err:
+            return err, gr.update(), gr.update()
+
         idx = int(selected_idx)
         if idx < 0 or idx >= len(all_jobs):
-            return "选择无效"
+            return "选择无效", gr.update(), gr.update()
         job = all_jobs[idx]
 
         c = get_crawler()
         if c.is_applied(job.get("url", "")):
-            return "该岗位已沟通过, 无需重复投递"
+            return "该岗位已沟通过, 无需重复投递", gr.update(), gr.update()
 
-        risk = risk_check_node({})
+        risk = risk_check_node({"user_name": user_name})
         if not risk.get("risk_passed", False):
-            return f"风控拦截: {risk.get('risk_message', '请稍后再试')}"
+            return f"风控拦截: {risk.get('risk_message', '请稍后再试')}", gr.update(), gr.update()
 
-        resume_id = int(resume_choice.split(":")[0])
+        try:
+            resume_id = int(resume_choice.split(":")[0])
+        except (ValueError, IndexError):
+            return "简历选择格式错误，请重新选择", gr.update(), gr.update()
         greeting = _get_greeting(user_name)
         result = c.start_chat(job["url"], greeting=greeting)
 
-        status = "success" if "已发起" in result or "已点击" in result else "failed"
+        status = "success" if "已发起" in result else "failed"
+        if "已发起" in result:
+            job["applied"] = True
         try:
             DeliveryRecordCRUD.create(
                 company=job.get("company", ""),
@@ -235,64 +262,83 @@ def _apply_job(selected_idx, all_jobs, resume_choice, state):
         except Exception as db_err:
             logger.warning("投递记录写入失败: %s", db_err)
 
-        return result
+        return result, _rebuild_table(all_jobs), all_jobs
     except Exception as e:
-        return f"投递失败: {e}"
+        return f"投递失败: {e}", gr.update(), gr.update()
 
 
 def _batch_apply(all_jobs, resume_choice, batch_count, state):
     user_name = state.get("user_name", "") if state else ""
     if not all_jobs:
-        return "无搜索结果"
+        yield "无搜索结果"
+        return
     if not resume_choice:
-        return "请先选择简历"
+        yield "请先选择简历"
+        return
 
-    err = _preflight_check(user_name)
-    if err:
-        return err
+    try:
+        err = _preflight_check(user_name)
+        if err:
+            yield err
+            return
 
-    c = get_crawler()
-    settings = get_settings()
-    today_count = DeliveryRecordCRUD.get_today_count(user_name=user_name)
-    remaining = settings.MAX_DAILY_DELIVERY - today_count
+        c = get_crawler()
+        settings = get_settings()
+        today_count = DeliveryRecordCRUD.get_today_count(user_name=user_name)
+        remaining = settings.MAX_DAILY_DELIVERY - today_count
 
-    candidates = [j for j in all_jobs if not c.is_applied(j.get("url", ""))]
-    if not candidates:
-        return "所有搜索结果均已沟通过, 请更换关键词搜索新岗位"
+        candidates = [j for j in all_jobs if not c.is_applied(j.get("url", ""))]
+        if not candidates:
+            yield "所有搜索结果均已沟通过, 请更换关键词搜索新岗位"
+            return
 
-    count = min(int(batch_count or 5), len(candidates), 10, remaining)
-    resume_id = int(resume_choice.split(":")[0])
-    greeting = _get_greeting(user_name)
-
-    results = []
-    for i in range(count):
-        risk = risk_check_node({})
-        if not risk.get("risk_passed", False):
-            results.append(f"[{i+1}] 风控拦截, 停止投递")
-            break
-
-        job = candidates[i]
-        msg = c.start_chat(job["url"], greeting=greeting)
-        status = "success" if "已发起" in msg or "已点击" in msg else "failed"
+        count = min(int(batch_count or 5), len(candidates), 10, remaining)
         try:
-            DeliveryRecordCRUD.create(
-                company=job.get("company", ""),
-                position=job.get("title", ""),
-                position_url=job.get("url", ""),
-                resume_id=resume_id,
-                status=status,
-                user_name=user_name,
-            )
-        except Exception:
-            pass
-        results.append(f"[{i+1}] {job['title']} @ {job['company']} → {msg}")
+            resume_id = int(resume_choice.split(":")[0])
+        except (ValueError, IndexError):
+            yield "简历选择格式错误，请重新选择"
+            return
+        greeting = _get_greeting(user_name)
 
-        if i < count - 1:
-            time.sleep(random.uniform(
-                settings.MIN_DELAY_SECONDS, settings.MAX_DELAY_SECONDS,
-            ))
+        if count <= 0:
+            yield "今日投递额度已用完, 请明日再试"
+            return
 
-    return "\n".join(results) if results else "无结果"
+        results = []
+        for i in range(count):
+            yield f"正在投递第 {i + 1}/{count} 个岗位..."
+
+            risk = risk_check_node({"user_name": user_name})
+            if not risk.get("risk_passed", False):
+                results.append(f"[{i+1}] 风控拦截, 停止投递")
+                break
+
+            job = candidates[i]
+            msg = c.start_chat(job["url"], greeting=greeting)
+            status = "success" if "已发起" in msg else "failed"
+            try:
+                DeliveryRecordCRUD.create(
+                    company=job.get("company", ""),
+                    position=job.get("title", ""),
+                    position_url=job.get("url", ""),
+                    resume_id=resume_id,
+                    status=status,
+                    user_name=user_name,
+                )
+            except Exception:
+                pass
+            results.append(f"[{i+1}] {job['title']} @ {job['company']} → {msg}")
+            yield "\n".join(results)
+
+            if i < count - 1:
+                lo = min(settings.MIN_DELAY_SECONDS, settings.MAX_DELAY_SECONDS)
+                hi = max(settings.MIN_DELAY_SECONDS, settings.MAX_DELAY_SECONDS)
+                time.sleep(random.uniform(lo, hi))
+
+        yield "\n".join(results) if results else "无结果"
+    except Exception as e:
+        logger.error("批量投递异常: %s", e)
+        yield f"批量投递异常: {e}"
 
 
 # ------------------------------------------------------------------
@@ -394,7 +440,7 @@ def create_delivery_page(login_state):
     apply_btn.click(
         fn=_apply_job,
         inputs=[selected_idx, jobs_state, resume_dd, login_state],
-        outputs=[op_msg],
+        outputs=[op_msg, job_table, jobs_state],
     )
     batch_btn.click(
         fn=_batch_apply,

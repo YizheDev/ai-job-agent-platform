@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import html as html_mod
 from datetime import datetime
 
 import gradio as gr
@@ -87,9 +88,11 @@ def _render_recent_table(records: list) -> str:
     for r in records:
         label, cls = _STATUS_MAP.get(r[4], (r[4], "tag-gray"))
         rows += (
-            f"<tr><td>{r[0]}</td><td>{r[1]}</td><td>{r[2]}</td>"
-            f"<td>{r[3]}</td>"
-            f'<td><span class="status-tag {cls}">{label}</span></td></tr>'
+            f"<tr><td>{html_mod.escape(str(r[0]))}</td>"
+            f"<td>{html_mod.escape(str(r[1]))}</td>"
+            f"<td>{html_mod.escape(str(r[2]))}</td>"
+            f"<td>{html_mod.escape(str(r[3]))}</td>"
+            f'<td><span class="status-tag {cls}">{html_mod.escape(label)}</span></td></tr>'
         )
     return header + rows + "</tbody></table>"
 
@@ -110,14 +113,15 @@ def load_dashboard_data(user_name: str = ""):
         ]
 
         hour = datetime.now().hour
-        risk_msg = ""
+        risk_parts: list[str] = []
+        if today_count >= settings.MAX_DAILY_DELIVERY:
+            risk_parts.append("⚠ 今日投递已达上限, 明日解锁")
         if not (settings.DELIVERY_START_HOUR <= hour < settings.DELIVERY_END_HOUR):
-            risk_msg = (
+            risk_parts.append(
                 f"⚠ 当前非投递时段, 建议在 "
                 f"{settings.DELIVERY_START_HOUR}:00 - {settings.DELIVERY_END_HOUR}:00 投递"
             )
-        if today_count >= settings.MAX_DAILY_DELIVERY:
-            risk_msg = "⚠ 今日投递已达上限, 明日解锁"
+        risk_msg = " | ".join(risk_parts)
 
         return (
             _render_data_cards(remaining, today_count, total_count, avg_score),

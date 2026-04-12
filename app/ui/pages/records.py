@@ -194,7 +194,8 @@ def create_records_page(login_state):
                 f"**累计投递**: {total} 条 | **近7日平均匹配分**: {avg}",
             )
         except Exception as e:
-            return f'<div class="alert-bar error">统计加载失败: {e}</div>', "", ""
+            logger.error("统计加载失败: %s", e)
+            return "", "", f"统计加载失败: {e}"
 
     def _export_records(time_f, status_f, state):
         user_name = state.get("user_name", "") if state else ""
@@ -211,25 +212,30 @@ def create_records_page(login_state):
         except Exception as e:
             return f"导出失败: {e}"
 
-    def _update_status(rid_str, new_status):
+    def _update_status(rid_str, new_status, time_f, status_f, state):
+        user_name = state.get("user_name", "") if state else ""
         if not rid_str or not new_status:
-            return "请输入记录 ID 和新状态"
+            return "请输入记录 ID 和新状态", _load_records(time_f, status_f, state)
         try:
-            DeliveryRecordCRUD.update_status(int(rid_str), new_status)
-            return f"✓ 状态已更新: ID {rid_str} → {new_status}"
+            ok = DeliveryRecordCRUD.update_status(int(rid_str), new_status, user_name=user_name)
+            if ok:
+                return f"✓ 状态已更新: ID {rid_str} → {new_status}", _load_records(time_f, status_f, state)
+            return "记录不存在或无权操作", _load_records(time_f, status_f, state)
         except Exception as e:
-            return f"更新失败: {e}"
+            return f"更新失败: {e}", _load_records(time_f, status_f, state)
 
-    def _delete_record(rid_str):
+    def _delete_record(rid_str, time_f, status_f, state):
+        user_name = state.get("user_name", "") if state else ""
         if not rid_str:
-            return "请输入记录 ID"
+            return "请输入记录 ID", _load_records(time_f, status_f, state)
         try:
-            DeliveryRecordCRUD.delete(int(rid_str))
-            return "✓ 删除成功"
+            ok = DeliveryRecordCRUD.delete(int(rid_str), user_name=user_name)
+            msg = "✓ 删除成功" if ok else "记录不存在或无权删除"
+            return msg, _load_records(time_f, status_f, state)
         except Exception as e:
-            return f"删除失败: {e}"
+            return f"删除失败: {e}", _load_records(time_f, status_f, state)
 
-    def _on_record_select(table_data, evt: gr.SelectData):
+    def _on_record_select(evt: gr.SelectData, table_data):
         try:
             row = evt.index[0] if isinstance(evt.index, (list, tuple)) else evt.index
             if hasattr(table_data, "iloc"):
@@ -258,11 +264,13 @@ def create_records_page(login_state):
     )
     update_btn.click(
         fn=_update_status,
-        inputs=[record_id_input, status_select],
-        outputs=[export_msg],
+        inputs=[record_id_input, status_select, time_filter, status_filter, login_state],
+        outputs=[export_msg, records_table],
     )
     delete_btn.click(
-        fn=_delete_record, inputs=[record_id_input], outputs=[export_msg]
+        fn=_delete_record,
+        inputs=[record_id_input, time_filter, status_filter, login_state],
+        outputs=[export_msg, records_table],
     )
     stats_btn.click(
         fn=_load_stats,

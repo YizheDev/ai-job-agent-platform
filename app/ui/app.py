@@ -747,10 +747,13 @@ label span {
     background: rgba(22,93,255,0.04) !important;
 }
 
-/* --- Loading overlay --- */
+/* --- Loading overlay (suppress for quick-action buttons & tab switches) --- */
 .app-header-bar ~ .wrap[data-testid="status-tracker"],
 #logout-row .wrap[data-testid="status-tracker"],
-.app-header-bar + .wrap[data-testid="status-tracker"] {
+.app-header-bar + .wrap[data-testid="status-tracker"],
+#main-tabs > .wrap[data-testid="status-tracker"],
+#main-tabs .wrap[data-testid="status-tracker"],
+#main-panel > .wrap[data-testid="status-tracker"] {
     display: none !important;
 }
 .wrap[data-testid="status-tracker"].translucent {
@@ -960,17 +963,21 @@ _DISCLAIMER = (
 
 def _accept_agreement(state):
     """用户同意协议"""
-    user_name = state.get("user_name", "") if state else ""
-    from app.db.crud import SysConfigCRUD
-    SysConfigCRUD.set("agreement_accepted", "true", user_name=user_name)
-    return gr.update(visible=False), gr.update(visible=True)
+    try:
+        user_name = state.get("user_name", "") if state else ""
+        from app.db.crud import SysConfigCRUD
+        SysConfigCRUD.set("agreement_accepted", "true", user_name=user_name)
+        return gr.update(visible=False), gr.update(visible=True)
+    except Exception as e:
+        logger.error("保存协议状态失败: %s", e)
+        return gr.update(visible=False), gr.update(visible=True)
 
 
-def _check_agreement() -> bool:
+def _check_agreement(user_name: str = "") -> bool:
     """检查用户是否已同意协议"""
     try:
         from app.db.crud import SysConfigCRUD
-        return SysConfigCRUD.get("agreement_accepted") == "true"
+        return SysConfigCRUD.get("agreement_accepted", user_name=user_name) == "true"
     except Exception:
         return False
 
@@ -1006,7 +1013,7 @@ def create_app() -> gr.Blocks:
                         max_lines=1,
                     )
                     login_key = gr.Textbox(
-                        label="DeepSeek API Key",
+                        label="API Key",
                         placeholder="请输入 API Key (sk-...)",
                         type="password",
                         max_lines=1,
@@ -1063,14 +1070,47 @@ def create_app() -> gr.Blocks:
                 with gr.Tab("⚙ 系统设置", id=7):
                     create_settings_page()
 
-            btn_upload.click(fn=lambda: gr.Tabs(selected=1), outputs=[main_tabs])
-            btn_delivery.click(fn=lambda: gr.Tabs(selected=5), outputs=[main_tabs])
-            btn_records.click(fn=lambda: gr.Tabs(selected=6), outputs=[main_tabs])
+            def _click_tab_js(tab_text: str) -> str:
+                """生成按文本匹配点击 tab 按钮的 JS（兼容 Gradio 6 overflow 结构）"""
+                return (
+                    "() => {"
+                    "  const mt = document.querySelector('#main-tabs');"
+                    "  if (!mt) return;"
+                    "  const btns = mt.querySelectorAll('.tab-wrapper button');"
+                    "  for (const b of btns) {"
+                    f"    if (b.textContent.includes('{tab_text}')) "
+                    "      { b.click(); return; }"
+                    "  }"
+                    "}"
+                )
 
-            # Auto-refresh delivery page connection banner when tab is selected
+            btn_upload.click(
+                fn=lambda: gr.Tabs(selected=1), outputs=[main_tabs],
+                js=_click_tab_js("简历管理"),
+            )
+            btn_delivery.click(
+                fn=lambda: gr.Tabs(selected=5), outputs=[main_tabs],
+                js=_click_tab_js("自动投递"),
+            )
+            btn_records.click(
+                fn=lambda: gr.Tabs(selected=6), outputs=[main_tabs],
+                js=_click_tab_js("投递记录"),
+            )
+
             from app.ui.pages.delivery import _connection_banner
+
+            def _safe_connection_banner():
+                try:
+                    return _connection_banner()
+                except Exception:
+                    return (
+                        '<div class="alert-bar">'
+                        "⚠ 请先前往「BOSS 账号」页面连接并登录 BOSS 直聘"
+                        "</div>"
+                    )
+
             delivery_tab.select(
-                fn=lambda: _connection_banner(),
+                fn=_safe_connection_banner,
                 outputs=[delivery_conn_banner],
             )
 
@@ -1120,6 +1160,10 @@ def create_app() -> gr.Blocks:
                 login_panel, agreement_panel, main_panel,
                 login_name, login_key, login_error,
             ],
+        ).then(
+            fn=lambda _: load_dashboard_data(""),
+            inputs=[login_state],
+            outputs=_dash_outputs,
         )
 
         # ---- 事件: 页面加载 → 从 BrowserState 恢复会话 ----
