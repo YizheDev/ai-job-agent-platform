@@ -1,0 +1,56 @@
+# Git
+.git/
+.gitignore
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.eggs/
+*.whl
+
+# 虚拟环境
+.venv/
+venv/
+env/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.cursor/
+
+# 运行时数据（通过 volume 挂载）
+data/
+logs/
+
+# 测试
+tests/
+test_*/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# 敏感文件
+.env
+
+# Docker 自身
+Dockerfile
+docker-compose*.yml
+.dockerignore
+
+# 部署文件（entrypoint.sh 需要保留，其余排除）
+deploy/nginx/
+deploy/deploy.sh
+deploy/backup.sh
+
+# 备份目录
+backups/
+
+# 文档
+docs/
+*.md
+LICENSE

@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
@@ -22,8 +23,6 @@ from app.core.logger import get_logger
 from app.db.models import init_database
 
 logger = get_logger("main")
-
-SERVER_PORT = 7860
 
 
 def _kill_port(port: int) -> None:
@@ -72,12 +71,14 @@ def main():
     app = create_app()
 
     logger.info("所有模块初始化完成, 正在启动服务...")
-    _kill_port(SERVER_PORT)
+    server_port = settings.SERVER_PORT
+    _kill_port(server_port)
+    is_docker = os.environ.get("DOCKER_CONTAINER", "").lower() in ("1", "true")
     app.launch(
-        server_name="127.0.0.1",
-        server_port=SERVER_PORT,
+        server_name="0.0.0.0" if is_docker else "127.0.0.1",
+        server_port=server_port,
         share=False,
-        inbrowser=True,
+        inbrowser=not is_docker,
         show_error=True,
         theme=APP_THEME,
         css=APP_CSS,

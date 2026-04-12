@@ -1,0 +1,6 @@
+# 确保关键部署文件在所有平台上使用 LF 行尾（CRLF 会导致 Linux 执行失败）
+*.sh text eol=lf
+Dockerfile text eol=lf
+docker-compose.yml text eol=lf
+*.conf text eol=lf
+.dockerignore text eol=lf
