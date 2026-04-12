@@ -78,6 +78,7 @@ def _extract_structure_with_llm(text: str) -> dict:
             model=settings.LLM_MODEL,
             temperature=0.1,
             max_tokens=2048,
+            request_timeout=60,
         )
         prompt = (
             "请从以下简历文本中提取结构化信息, 仅返回 JSON (不要 markdown 代码块):\n"
@@ -91,14 +92,9 @@ def _extract_structure_with_llm(text: str) -> dict:
             '"summary":"个人简介"}\n\n'
             f"简历文本:\n{text[:4000]}"
         )
+        from app.utils.llm_util import extract_json
         response = llm.invoke(prompt)
-        content = response.content.strip()
-        if "```" in content:
-            content = content.split("```")[1] if content.startswith("```") else content.split("```json")[-1].split("```")[0]
-            content = content.strip()
-            if content.startswith("json"):
-                content = content[4:].strip()
-        return json.loads(content)
+        return extract_json(response.content or "")
     except Exception as e:
         logger.warning("LLM 简历解析失败, 降级为基础解析: %s", e)
         return _extract_structure_basic(text)
@@ -155,6 +151,8 @@ def _extract_structure_basic(text: str) -> dict:
 
 def save_resume_file(file_path: str) -> str:
     """将上传的简历复制到数据目录, 返回目标路径"""
+    from datetime import datetime as _dt
+
     src = Path(file_path)
     if not src.exists():
         raise ResumeParseError(details=f"文件不存在: {file_path}")
@@ -169,6 +167,9 @@ def save_resume_file(file_path: str) -> str:
 
     RESUME_DIR.mkdir(parents=True, exist_ok=True)
     dest = RESUME_DIR / src.name
+    if dest.exists():
+        timestamp = _dt.now().strftime("%Y%m%d%H%M%S")
+        dest = RESUME_DIR / f"{src.stem}_{timestamp}{suffix}"
     shutil.copy2(str(src), str(dest))
     logger.info("简历文件已保存: %s -> %s", src.name, dest)
     return str(dest)

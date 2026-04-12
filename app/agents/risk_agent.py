@@ -7,7 +7,6 @@
 from __future__ import annotations
 
 import random
-import time
 from datetime import datetime
 
 from app.core.config import get_settings
@@ -19,10 +18,10 @@ from app.workflow.state import JobAgentState
 logger = get_logger(__name__)
 
 
-def _check_daily_limit() -> tuple[bool, str]:
+def _check_daily_limit(user_name: str = "") -> tuple[bool, str]:
     """检查今日投递量是否达到上限"""
     settings = get_settings()
-    today_count = DeliveryRecordCRUD.get_today_count()
+    today_count = DeliveryRecordCRUD.get_today_count(user_name=user_name)
     max_count = settings.MAX_DAILY_DELIVERY
     if today_count >= max_count:
         msg = f"今日投递已达上限 ({today_count}/{max_count}), 明日解锁"
@@ -47,12 +46,13 @@ def _check_time_window() -> tuple[bool, str]:
     return True, "在投递时段内"
 
 
-def _apply_random_delay() -> float:
-    """执行随机延时 (模拟真人操作间隔)"""
+def _compute_random_delay() -> float:
+    """计算建议延时值 (不执行 sleep, 由调用方自行控制)"""
     settings = get_settings()
-    delay = random.uniform(settings.MIN_DELAY_SECONDS, settings.MAX_DELAY_SECONDS)
-    logger.debug("执行随机延时: %.2f 秒", delay)
-    time.sleep(delay)
+    lo = min(settings.MIN_DELAY_SECONDS, settings.MAX_DELAY_SECONDS)
+    hi = max(settings.MIN_DELAY_SECONDS, settings.MAX_DELAY_SECONDS)
+    delay = random.uniform(lo, hi)
+    logger.debug("建议随机延时: %.2f 秒", delay)
     return delay
 
 
@@ -67,8 +67,10 @@ def risk_check_node(state: JobAgentState) -> dict:
     logger.info("===== 风控校验节点启动 =====")
 
     try:
+        user_name = state.get("user_name", "")
+
         # 1. 检查日投递上限
-        limit_ok, limit_msg = _check_daily_limit()
+        limit_ok, limit_msg = _check_daily_limit(user_name)
         if not limit_ok:
             return {
                 "risk_passed": False,
@@ -89,10 +91,10 @@ def risk_check_node(state: JobAgentState) -> dict:
                 "error_msg": "",
             }
 
-        # 3. 随机延时
-        delay = _apply_random_delay()
+        # 3. 计算建议延时
+        delay = _compute_random_delay()
 
-        logger.info("风控校验通过 (延时 %.2f 秒)", delay)
+        logger.info("风控校验通过 (建议延时 %.2f 秒)", delay)
         return {
             "risk_passed": True,
             "risk_message": "风控校验通过",

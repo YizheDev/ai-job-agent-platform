@@ -35,6 +35,7 @@ def _parse_jd_with_llm(jd_text: str) -> dict:
             model=settings.LLM_MODEL,
             temperature=0.1,
             max_tokens=1024,
+            request_timeout=60,
         )
         prompt = (
             "请从以下岗位描述中提取结构化信息, 仅返回 JSON:\n"
@@ -47,11 +48,9 @@ def _parse_jd_with_llm(jd_text: str) -> dict:
             '"salary":"薪资范围"}\n\n'
             f"岗位描述:\n{jd_text[:3000]}"
         )
+        from app.utils.llm_util import extract_json
         response = llm.invoke(prompt)
-        content = response.content.strip()
-        if "```" in content:
-            content = content.split("```json")[-1].split("```")[0].strip() if "```json" in content else content.split("```")[1].split("```")[0].strip()
-        return json.loads(content)
+        return extract_json(response.content or "")
     except Exception as e:
         logger.warning("LLM JD 解析失败, 降级为基础解析: %s", e)
         return _parse_jd_basic(jd_text)

@@ -6,7 +6,6 @@
 
 from __future__ import annotations
 
-from app.core.config import SCREENSHOT_DIR
 from app.core.logger import get_logger
 from app.db.crud import ExceptionLogCRUD
 from app.workflow.state import JobAgentState
@@ -21,14 +20,18 @@ def _log_exception(
     module: str = "exception_agent",
     screenshot_path: str = "",
 ) -> int:
-    """记录异常到数据库"""
-    return ExceptionLogCRUD.create(
-        error_code=error_code,
-        error_msg=error_msg,
-        error_detail=detail,
-        module=module,
-        screenshot_path=screenshot_path,
-    )
+    """记录异常到数据库（DB 失败时降级为日志记录）"""
+    try:
+        return ExceptionLogCRUD.create(
+            error_code=error_code,
+            error_msg=error_msg,
+            error_detail=detail,
+            module=module,
+            screenshot_path=screenshot_path,
+        )
+    except Exception as e:
+        logger.error("异常日志写入DB失败 [%s]: %s (原始异常: %s)", error_code, e, error_msg)
+        return -1
 
 
 def _handle_captcha_exception(state: JobAgentState) -> dict:
@@ -140,17 +143,26 @@ def handle_exception_node(state: JobAgentState) -> dict:
     error_code = state.get("error_code", "")
     logger.info("===== 异常处理节点启动: error_code=%s =====", error_code)
 
-    handlers = {
-        "E003": _handle_captcha_exception,
-        "E004": _handle_login_expired_exception,
-        "E005": _handle_page_changed_exception,
-        "E006": _handle_risk_control_exception,
-        "E007": _handle_timeout_exception,
-    }
+    try:
+        handlers = {
+            "E003": _handle_captcha_exception,
+            "E004": _handle_login_expired_exception,
+            "E005": _handle_page_changed_exception,
+            "E006": _handle_risk_control_exception,
+            "E007": _handle_timeout_exception,
+        }
 
-    handler = handlers.get(error_code, _handle_generic_exception)
-    result = handler(state)
+        handler = handlers.get(error_code, _handle_generic_exception)
+        result = handler(state)
 
-    logger.info("异常处理完成: retry=%s, need_human=%s",
-                result.get("retry"), result.get("need_human_intervene"))
-    return result
+        logger.info("异常处理完成: retry=%s, need_human=%s",
+                    result.get("retry"), result.get("need_human_intervene"))
+        return result
+    except Exception as e:
+        logger.error("异常处理节点自身异常: %s", e)
+        return {
+            "delivery_status": "failed",
+            "error_msg": f"异常处理失败: {e}",
+            "need_human_intervene": False,
+            "retry": False,
+        }

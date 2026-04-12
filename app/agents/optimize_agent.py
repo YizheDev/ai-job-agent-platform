@@ -30,6 +30,7 @@ def _get_llm():
         model=settings.LLM_MODEL,
         temperature=settings.LLM_TEMPERATURE,
         max_tokens=settings.LLM_MAX_TOKENS,
+        request_timeout=60,
     )
 
 
@@ -70,11 +71,9 @@ JD 岗位描述:
 请返回 JSON 格式 (不要 markdown 代码块):
 {{"optimized_resume": "完整的优化后简历文本", "suggestions": ["优化建议1: 说明 + 原因 + 示例", "优化建议2", "优化建议3"]}}"""
 
+    from app.utils.llm_util import extract_json
     response = llm.invoke(prompt)
-    content = response.content.strip()
-    if "```" in content:
-        content = content.split("```json")[-1].split("```")[0].strip() if "```json" in content else content.split("```")[1].split("```")[0].strip()
-    return json.loads(content)
+    return extract_json(response.content or "")
 
 
 def _generate_cover_letter_with_llm(
@@ -100,7 +99,7 @@ def _generate_cover_letter_with_llm(
 5. 直接返回求职信文本, 不要其他内容"""
 
     response = llm.invoke(prompt)
-    return response.content.strip()
+    return (response.content or "").strip()
 
 
 def optimize_resume_node(state: JobAgentState) -> dict:
@@ -138,6 +137,7 @@ def optimize_resume_node(state: JobAgentState) -> dict:
                     is_original=False,
                     parent_id=resume_id,
                     version_label=f"针对 {position} 优化",
+                    user_name=state.get("user_name", ""),
                 )
 
         logger.info("简历优化成功: suggestions=%d, cover_letter=%d字",
