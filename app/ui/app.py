@@ -986,13 +986,70 @@ def create_app() -> gr.Blocks:
     """创建 Gradio 应用主界面"""
     settings = get_settings()
 
+    base_model_map = {
+        "https://api.openai.com/v1": ["gpt-4o", "gpt-4o-mini", "gpt-4.1", "gpt-4.1-mini", "o3", "o4-mini"],
+        "https://api.deepseek.com": ["deepseek-chat", "deepseek-reasoner"],
+        "https://dashscope.aliyuncs.com/compatible-mode/v1": ["qwen-plus", "qwen-max", "qwen-turbo"],
+        "https://open.bigmodel.cn/api/paas/v4": ["glm-4", "glm-4-flash"],
+        "https://api.moonshot.cn/v1": ["moonshot-v1-8k", "moonshot-v1-32k", "moonshot-v1-128k"],
+        "https://api.minimax.chat/v1": ["abab6.5s-chat", "abab6.5-chat", "abab5.5-chat"],
+        "https://api.lingyiwanwu.com/v1": ["yi-lightning", "yi-large", "yi-medium"],
+        "https://api.anthropic.com/v1": ["claude-3-5-sonnet", "claude-3-5-haiku"],
+        "https://api.groq.com/openai/v1": ["llama-3.1-70b-instruct", "mixtral-8x7b-instruct"],
+        "https://api.together.xyz/v1": ["meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo", "mistralai/Mixtral-8x7B-Instruct-v0.1"],
+    }
+
+    common_model_choices = [
+        "gpt-4o",
+        "gpt-4o-mini",
+        "gpt-4.1",
+        "gpt-4.1-mini",
+        "o3",
+        "o4-mini",
+        "deepseek-chat",
+        "deepseek-reasoner",
+        "qwen-plus",
+        "qwen-max",
+        "qwen-turbo",
+        "glm-4",
+        "glm-4-flash",
+        "moonshot-v1-8k",
+        "abab6.5s-chat",
+        "yi-lightning",
+        "llama-3.1-70b-instruct",
+        "mixtral-8x7b-instruct",
+        "claude-3-5-sonnet",
+        "gemini-1.5-pro",
+    ]
+
+    def _recommend_models_by_base_url(base_url: str, current_model: str):
+        key = (base_url or "").strip().rstrip("/")
+        preferred = base_model_map.get(key, [])
+        merged = preferred + [m for m in common_model_choices if m not in preferred]
+        chosen = (current_model or "").strip()
+        if not chosen:
+            chosen = preferred[0] if preferred else settings.LLM_MODEL
+        return gr.update(choices=merged, value=chosen)
+
     with gr.Blocks(title=settings.APP_NAME) as app:
 
         login_state = gr.State(
-            {"logged_in": False, "user_name": "", "api_key": ""}
+            {
+                "logged_in": False,
+                "user_name": "",
+                "api_key": "",
+                "base_url": "",
+                "model": "",
+            }
         )
         browser_state = gr.BrowserState(
-            {"logged_in": False, "user_name": "", "api_key": ""},
+            {
+                "logged_in": False,
+                "user_name": "",
+                "api_key": "",
+                "base_url": "",
+                "model": "",
+            },
             storage_key="ai_job_agent_session",
             secret="ai_job_agent_2026_persistent_key",
         )
@@ -1014,9 +1071,60 @@ def create_app() -> gr.Blocks:
                     )
                     login_key = gr.Textbox(
                         label="API Key",
-                        placeholder="请输入 API Key (sk-...)",
+                        placeholder="请输入 API Key",
                         type="password",
                         max_lines=1,
+                    )
+                    login_base_url = gr.Dropdown(
+                        label="API Base URL",
+                        choices=[
+                            "https://api.openai.com/v1",
+                            "https://api.deepseek.com",
+                            "https://dashscope.aliyuncs.com/compatible-mode/v1",
+                            "https://open.bigmodel.cn/api/paas/v4",
+                            "https://api.moonshot.cn/v1",
+                            "https://api.minimax.chat/v1",
+                            "https://api.lingyiwanwu.com/v1",
+                            "https://api.siliconflow.cn/v1",
+                            "https://api.baichuan-ai.com/v1",
+                            "https://api.together.xyz/v1",
+                            "https://api.groq.com/openai/v1",
+                            "https://openrouter.ai/api/v1",
+                            "https://api.anthropic.com/v1",
+                        ],
+                        value=settings.LLM_BASE_URL,
+                        allow_custom_value=True,
+                        filterable=True,
+                        info="可下拉选择常用服务地址，也可手动输入自定义地址",
+                    )
+                    login_model = gr.Dropdown(
+                        label="模型名称",
+                        choices=[
+                            "gpt-4o",
+                            "gpt-4o-mini",
+                            "gpt-4.1",
+                            "gpt-4.1-mini",
+                            "o3",
+                            "o4-mini",
+                            "deepseek-chat",
+                            "deepseek-reasoner",
+                            "qwen-plus",
+                            "qwen-max",
+                            "qwen-turbo",
+                            "glm-4",
+                            "glm-4-flash",
+                            "moonshot-v1-8k",
+                            "abab6.5s-chat",
+                            "yi-lightning",
+                            "llama-3.1-70b-instruct",
+                            "mixtral-8x7b-instruct",
+                            "claude-3-5-sonnet",
+                            "gemini-1.5-pro",
+                        ],
+                        value=settings.LLM_MODEL,
+                        allow_custom_value=True,
+                        filterable=True,
+                        info="可下拉选择常见模型，也可手动输入自定义模型名",
                     )
                     login_error = gr.HTML("", elem_id="login-error")
                     login_btn = gr.Button(
@@ -1114,6 +1222,12 @@ def create_app() -> gr.Blocks:
                 outputs=[delivery_conn_banner],
             )
 
+        login_base_url.change(
+            fn=_recommend_models_by_base_url,
+            inputs=[login_base_url, login_model],
+            outputs=[login_model],
+        )
+
         # ---- 辅助: 刷新工作台数据 ----
         _dash_outputs = [dash_cards, dash_risk, dash_recent]
 
@@ -1133,7 +1247,7 @@ def create_app() -> gr.Blocks:
         for trigger in (login_btn.click, login_name.submit, login_key.submit):
             trigger(
                 fn=handle_login,
-                inputs=[login_name, login_key],
+                inputs=[login_name, login_key, login_base_url, login_model],
                 outputs=_login_outputs,
             ).then(
                 fn=_refresh_dashboard,
@@ -1158,7 +1272,7 @@ def create_app() -> gr.Blocks:
             outputs=[
                 login_state, browser_state,
                 login_panel, agreement_panel, main_panel,
-                login_name, login_key, login_error,
+                login_name, login_key, login_base_url, login_model, login_error,
             ],
         ).then(
             fn=lambda _: load_dashboard_data(""),

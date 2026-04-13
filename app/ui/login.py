@@ -448,7 +448,7 @@ def build_header_html(user_name: str, version: str) -> str:
     )
 
 
-def handle_login(user_name: str, api_key: str) -> tuple:
+def handle_login(user_name: str, api_key: str, base_url: str, model: str) -> tuple:
     """处理登录请求
 
     Returns:
@@ -485,12 +485,30 @@ def handle_login(user_name: str, api_key: str) -> tuple:
             _keep, _keep,
         )
 
-    settings = get_settings()
+    if not base_url or not base_url.strip():
+        return (
+            {"logged_in": False}, _keep,
+            _keep, _keep, _keep,
+            '<div class="login-error-text">请输入 API Base URL</div>',
+            _keep, _keep,
+        )
+
+    if not model or not str(model).strip():
+        return (
+            {"logged_in": False}, _keep,
+            _keep, _keep, _keep,
+            '<div class="login-error-text">请输入模型名称</div>',
+            _keep, _keep,
+        )
+
+    base_url = base_url.strip().rstrip("/")
+    model = str(model).strip()
+
     try:
         result = validate_api_key(
             api_key,
-            base_url=settings.LLM_BASE_URL,
-            model=settings.LLM_MODEL,
+            base_url=base_url,
+            model=model,
         )
     except Exception as e:
         logger.error("API Key 校验过程异常: %s", e)
@@ -515,14 +533,37 @@ def handle_login(user_name: str, api_key: str) -> tuple:
     api_key = api_key.strip()
 
     try:
-        update_env_file({"LLM_API_KEY": api_key})
+        update_env_file(
+            {
+                "LLM_API_KEY": api_key,
+                "LLM_BASE_URL": base_url,
+                "LLM_MODEL": model,
+            }
+        )
         reload_settings()
-        logger.info("用户 [%s] 登录成功, API Key 已更新", user_name)
+        logger.info(
+            "用户 [%s] 登录成功, API 配置已同步 (base_url=%s, model=%s)",
+            user_name,
+            base_url,
+            model,
+        )
     except Exception as e:
         logger.error("登录后保存配置失败: %s", e)
 
-    state = {"logged_in": True, "user_name": user_name, "api_key": api_key}
-    browser_data = {"logged_in": True, "user_name": user_name, "api_key": api_key}
+    state = {
+        "logged_in": True,
+        "user_name": user_name,
+        "api_key": api_key,
+        "base_url": base_url,
+        "model": model,
+    }
+    browser_data = {
+        "logged_in": True,
+        "user_name": user_name,
+        "api_key": api_key,
+        "base_url": base_url,
+        "model": model,
+    }
 
     from app.db.crud import SysConfigCRUD
 
@@ -562,13 +603,20 @@ def handle_logout() -> tuple:
     """退出登录, 清空会话状态
 
     Returns:
-        8-tuple matching logout outputs:
+        10-tuple matching logout outputs:
             login_state, browser_state,
             login_panel, agreement_panel, main_panel,
-            login_name, login_key, login_error
+            login_name, login_key, login_base_url, login_model, login_error
     """
     logger.info("用户退出登录")
-    empty = {"logged_in": False, "user_name": "", "api_key": ""}
+    settings = get_settings()
+    empty = {
+        "logged_in": False,
+        "user_name": "",
+        "api_key": "",
+        "base_url": "",
+        "model": "",
+    }
     return (
         empty,
         empty,
@@ -577,6 +625,8 @@ def handle_logout() -> tuple:
         gr.update(visible=False),
         "",
         "",
+        settings.LLM_BASE_URL,
+        settings.LLM_MODEL,
         "",
     )
 
@@ -590,7 +640,13 @@ def restore_session(saved_state) -> tuple:
                   header, user_label)
     """
     _keep = gr.skip()
-    empty_state = {"logged_in": False, "user_name": "", "api_key": ""}
+    empty_state = {
+        "logged_in": False,
+        "user_name": "",
+        "api_key": "",
+        "base_url": "",
+        "model": "",
+    }
     _show_login = (
         empty_state,
         gr.update(visible=True),
@@ -605,18 +661,34 @@ def restore_session(saved_state) -> tuple:
 
         user_name = saved_state.get("user_name", "")
         api_key = saved_state.get("api_key", "")
+        base_url = (saved_state.get("base_url") or "").strip().rstrip("/")
+        model = str(saved_state.get("model") or "").strip()
 
         if not user_name:
             return _show_login
 
+        updates: dict[str, str] = {}
         if api_key:
+            updates["LLM_API_KEY"] = api_key
+        if base_url:
+            updates["LLM_BASE_URL"] = base_url
+        if model:
+            updates["LLM_MODEL"] = model
+
+        if updates:
             try:
-                update_env_file({"LLM_API_KEY": api_key})
+                update_env_file(updates)
                 reload_settings()
             except Exception:
                 pass
 
-        state = {"logged_in": True, "user_name": user_name, "api_key": api_key}
+        state = {
+            "logged_in": True,
+            "user_name": user_name,
+            "api_key": api_key,
+            "base_url": base_url,
+            "model": model,
+        }
 
         from app.db.crud import SysConfigCRUD
 
