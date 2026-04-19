@@ -1,0 +1,42 @@
+>> launching playwright
+>> goto
+>> login visible, attempting login
+>> login dismissed after 4
+>> tab buttons: 17
+   [0] '📊 工作台'
+   [1] '📄 简历管理'
+   [2] '🔍 JD匹配'
+   [3] '✨ 简历优化'
+   [4] '🔗 BOSS账号'
+   [5] '🚀 自动投递'
+   [6] '📋 投递记录'
+   [7] '⚙ 系统设置'
+   [8] '📊 工作台'
+   [9] '📄 简历管理'
+   [10] '🔍 JD匹配'
+   [11] '✨ 简历优化'
+   [12] '🔗 BOSS账号'
+   [13] '🚀 自动投递'
+   [14] '📋 投递记录'
+   [15] '⚙ 系统设置'
+   [16] ''
+>> clicked 系统设置 (force)
+--- count ---
+type: count
+sliderCount: 6
+--- slider ---
+type: slider
+OUTER: <div id="" class="block st-slider svelte-1plpy97 padded auto-margin" dir="ltr" style="--start-top: 0px; --start-left: 0px; --start-width: 0px; --start-height: 0px; border-style: solid; overflow: auto; min-width: min(160px, 100%);"><!----><!----><div data-testid="status-tracker" class="wrap default full svelte-1uj8rng hide" style="position: absolute; padding: 0px;"><!----> <!----><!----></div><!----> <div class="wrap svelte-8epfm4"><div class="head svelte-8epfm4"><label class="svelte-8epfm4" for="range_id_0"><span data-testid="block-info" dir="ltr" class="svelte-jdcl7l">每日最大投递量<!----></span> <!----><!----></label> <div class="tab-like-container svelte-8epfm4"><input data-testid="number-input" type="number" class="svelte-8epfm4" aria-label="number input for 每日最大投递量" min="1" max="50" step="1"> <button class="reset-button svelte-8epfm4" aria-label="Reset to default value" data-testid="reset-button">↺</button><!----></div></div> <div class="slider_input_container svelte-8epfm4"><span class="min_value svelte-8epfm4">1</span> <input type="range" name="cowbell" class="svelte-8epfm4" id="range_id_0" min="1" max="50" step="1" aria-label="range slider for 每日最大投递量" style="--range_progress: 38.775510204081634%;"> <span class="max_value svelte-8epfm4">50</span></div></div><!----> <!----></div>
+cls: block st-slider svelte-1plpy97 padded auto-margin
+--- numCount ---
+type: numCount
+count: 6
+--- number ---
+type: number
+OUTER: <div id="" class="block st-slider svelte-1plpy97 padded auto-margin" dir="ltr" style="--start-top: 0px; --start-left: 0px; --start-width: 0px; --start-height: 0px; border-style: solid; overflow: auto; min-width: min(160px, 100%);"><!----><!----><div data-testid="status-tracker" class="wrap default full svelte-1uj8rng hide" style="position: absolute; padding: 0px;"><!----> <!----><!----></div><!----> <div class="wrap svelte-8epfm4"><div class="head svelte-8epfm4"><label class="svelte-8epfm4" for="range_id_0"><span data-testid="block-info" dir="ltr" class="svelte-jdcl7l">每日最大投递量<!----></span> <!----><!----></label> <div class="tab-like-container svelte-8epfm4"><input data-testid="number-input" type="number" class="svelte-8epfm4" aria-label="number input for 每日最大投递量" min="1" max="50" step="1"> <button class="reset-button svelte-8epfm4" aria-label="Reset to default value" data-testid="reset-button">↺</button><!----></div></div> <div class="slider_input_container svelte-8epfm4"><span class="min_value svelte-8epfm4">1</span> <input type="range" name="cowbell" class="svelte-8epfm4" id="range_id_0" min="1" max="50" step="1" aria-label="range slider for 每日最大投递量" style="--range_progress: 38.775510204081634%;"> <span class="max_value svelte-8epfm4">50</span></div></div><!----> <!----></div>
+cls: block st-slider svelte-1plpy97 padded auto-margin
+--- number ---
+type: number
+OUTER: <div id="" class="block st-slider st-slider-half svelte-1plpy97 padded auto-margin" dir="ltr" style="--start-top: 0px; --start-left: 0px; --start-width: 0px; --start-height: 0px; border-style: solid; overflow: auto; min-width: min(160px, 100%);"><!----><!----><div data-testid="status-tracker" class="wrap default full svelte-1uj8rng hide" style="position: absolute; padding: 0px;"><!----> <!----><!----></div><!----> <div class="wrap svelte-8epfm4"><div class="head svelte-8epfm4"><label class="svelte-8epfm4" for="range_id_2"><span data-testid="block-info" dir="ltr" class="svelte-jdcl7l">最小延时 (秒)<!----></span> <!----><!----></label> <div class="tab-like-container svelte-8epfm4"><input data-testid="number-input" type="number" class="svelte-8epfm4" aria-label="number input for 最小延时 (秒)" min="1" max="10" step="1"> <button class="reset-button svelte-8epfm4" aria-label="Reset to default value" data-testid="reset-button">↺</button><!----></div></div> <div class="slider_input_container svelte-8epfm4"><span class="min_value svelte-8epfm4">1</span> <input type="range" name="cowbell" class="svelte-8epfm4" id="range_id_2" min="1" max="10" step="1" aria-label="range slider for 最小延时 (秒)" style="--range_progress: 11.11111111111111%;"> <span class="max_value svelte-8epfm4">10</span></div></div><!----> <!----></div>
+cls: block st-slider st-slider-half svelte-1plpy97 padded auto-margin
+>> done

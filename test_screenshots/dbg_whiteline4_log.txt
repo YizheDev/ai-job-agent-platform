@@ -1,0 +1,3 @@
+viewport size: 1440x900
+bright rows in sidebar zone (x 60-320): 0
+== entire viewport bottom (y 800-900) bright runs ==

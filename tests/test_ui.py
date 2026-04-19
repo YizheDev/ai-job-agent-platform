@@ -70,7 +70,9 @@ class TestSettingsPageFunctions:
         assert len(result) == 9
 
     def test_save_risk_settings(self):
-        """测试保存风控设置"""
+        """测试保存风控设置 (生成器: 先 loading 态, 再最终结果)"""
         from app.ui.pages.settings import _save_risk_settings
-        msg = _save_risk_settings(20, 2, 4, 9, 18, 70)
-        assert "成功" in msg
+        msgs = list(_save_risk_settings(20, 2, 4, 9, 18, 70))
+        assert len(msgs) >= 1
+        final = msgs[-1]
+        assert "成功" in final

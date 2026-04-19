@@ -139,6 +139,7 @@ LOGIN_CSS = """
 }
 .brand-features {
     display: flex; flex-direction: column; gap: 16px;
+    perspective: 800px;
 }
 .feature-item {
     display: flex; align-items: center; gap: 14px;
@@ -146,16 +147,73 @@ LOGIN_CSS = """
     background: rgba(255,255,255,0.1);
     border-radius: 12px;
     backdrop-filter: blur(10px);
-    border: 1px solid rgba(255,255,255,0.08);
-    transition: all 0.3s;
+    border: 1px solid rgba(255,255,255,0.12);
+    transition:
+        transform 0.45s cubic-bezier(0.2, 0.8, 0.2, 1),
+        background 0.3s ease,
+        border-color 0.3s ease,
+        box-shadow 0.35s ease;
+    transform-style: preserve-3d;
+    position: relative;
+    cursor: default;
+    will-change: transform;
+}
+.feature-item::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 12px;
+    background: linear-gradient(135deg,
+        rgba(255,255,255,0.18) 0%,
+        rgba(255,255,255,0.0) 45%,
+        rgba(255,255,255,0.0) 55%,
+        rgba(255,255,255,0.12) 100%);
+    opacity: 0;
+    transition: opacity 0.35s ease;
+    pointer-events: none;
+}
+.feature-item::after {
+    content: '';
+    position: absolute;
+    left: -40%; top: -50%;
+    width: 60%; height: 200%;
+    background: linear-gradient(115deg,
+        transparent 30%,
+        rgba(255,255,255,0.18) 48%,
+        rgba(255,255,255,0.32) 50%,
+        rgba(255,255,255,0.18) 52%,
+        transparent 70%);
+    transform: skewX(-18deg);
+    opacity: 0;
+    pointer-events: none;
+    transition: left 0.7s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.35s ease;
 }
 .feature-item:hover {
     background: rgba(255,255,255,0.18);
-    transform: translateX(4px);
+    border-color: rgba(255,255,255,0.3);
+    transform:
+        perspective(800px)
+        translateY(-6px)
+        translateZ(0)
+        rotateX(4deg)
+        rotateY(-3deg);
+    box-shadow:
+        0 18px 36px rgba(0,0,0,0.28),
+        0 4px 12px rgba(22,93,255,0.18),
+        inset 0 1px 0 rgba(255,255,255,0.22);
+}
+.feature-item:hover::before { opacity: 1; }
+.feature-item:hover::after { opacity: 1; left: 110%; }
+.feature-item:hover .feature-icon {
+    transform: scale(1.18) rotate(-6deg);
+    filter: drop-shadow(0 6px 14px rgba(255,255,255,0.32));
 }
 .feature-icon {
     font-size: 26px; flex-shrink: 0;
     width: 36px; text-align: center;
+    transition: transform 0.4s cubic-bezier(0.2, 0.8, 0.2, 1),
+                filter 0.35s ease;
+    will-change: transform;
 }
 .feature-name {
     font-size: 15px; font-weight: 600;
@@ -306,18 +364,23 @@ LOGIN_CSS = """
 }
 .header-user-menu {
     position: absolute;
-    top: calc(100% + 6px);
+    top: 100%;
     right: 0;
     min-width: 160px;
-    background: #FFFFFF;
-    border-radius: 10px;
-    box-shadow: 0 8px 30px rgba(0,0,0,0.12), 0 0 0 1px rgba(0,0,0,0.04);
-    padding: 6px;
+    padding: 14px 6px 6px 6px;
+    margin-top: -4px;
+    background: transparent;
     opacity: 0;
     visibility: hidden;
     transform: translateY(-4px);
     transition: all 0.2s ease;
     z-index: 1000;
+}
+.header-user-menu > .header-user-menu-card {
+    background: #FFFFFF;
+    border-radius: 10px;
+    box-shadow: 0 8px 30px rgba(0,0,0,0.12), 0 0 0 1px rgba(0,0,0,0.04);
+    padding: 6px;
 }
 .header-user-dropdown:hover .header-user-menu {
     opacity: 1;
@@ -406,32 +469,164 @@ LOGIN_BRAND_HTML = """<div class="login-brand">
 </div>"""
 
 
+def _get_failed_count(user_name: str) -> int:
+    """获取当前用户最近 24h 失败投递数（用于 header 通知铃铛角标）。失败时返回 0。"""
+    if not user_name:
+        return 0
+    try:
+        from app.db.crud import DeliveryRecordCRUD
+        recs = DeliveryRecordCRUD.list_records(
+            user_name=user_name,
+            status="failed",
+            limit=200,
+            offset=0,
+        )
+        return len(recs) if recs else 0
+    except Exception:
+        return 0
+
+
+def _build_notification_html(user_name: str) -> str:
+    """构建通知铃铛 + 下拉面板 HTML。"""
+    failed = _get_failed_count(user_name)
+    badge = (
+        f'<span class="header-bell-badge" aria-label="{failed} 条失败投递">'
+        f'{failed if failed < 99 else "99+"}</span>'
+    ) if failed > 0 else ""
+    panel_body = (
+        f'<div class="header-bell-panel-row header-bell-row-warn">'
+        f'<span class="hbell-row-dot"></span>'
+        f'<div class="hbell-row-text">'
+        f'<div class="hbell-row-title">最近 24h 投递失败</div>'
+        f'<div class="hbell-row-sub">共 {failed} 条记录, 点击查看 →</div>'
+        f'</div></div>'
+        if failed > 0 else
+        '<div class="header-bell-panel-empty">'
+        '<div class="hbell-empty-ico">\U0001F389</div>'
+        '<div class="hbell-empty-title">暂无失败通知</div>'
+        '<div class="hbell-empty-sub">投递任务运行正常</div>'
+        '</div>'
+    )
+    return (
+        '<div class="header-bell-wrap" role="button" tabindex="0" '
+        'aria-haspopup="menu" aria-expanded="false" '
+        'aria-label="通知中心" data-haju-menu="bell" '
+        'onmouseenter="this.setAttribute(\'aria-expanded\',\'true\')" '
+        'onmouseleave="if(!this.classList.contains(\'open\'))'
+        '{this.setAttribute(\'aria-expanded\',\'false\');}" '
+        'onkeydown="if(event.key===\'Enter\'||event.key===\' \')'
+        '{event.preventDefault();this.classList.toggle(\'open\');'
+        'this.setAttribute(\'aria-expanded\',this.classList.contains(\'open\'));}'
+        'else if(event.key===\'Escape\')'
+        '{this.classList.remove(\'open\');this.setAttribute(\'aria-expanded\',\'false\');this.blur();}">'
+        '<span class="header-bell-trigger" '
+        'onclick="(function(t){const w=t.closest(\'.header-bell-wrap\');'
+        'if(w){w.classList.toggle(\'open\');'
+        'w.setAttribute(\'aria-expanded\',w.classList.contains(\'open\'));}})(this);">'
+        '<svg class="header-bell-ico" viewBox="0 0 24 24" width="18" height="18" '
+        'fill="none" stroke="currentColor" stroke-width="1.8" '
+        'stroke-linecap="round" stroke-linejoin="round" '
+        'aria-hidden="true" role="img">'
+        '<path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/>'
+        '<path d="M13.73 21a2 2 0 0 1-3.46 0"/>'
+        '</svg>'
+        f'{badge}'
+        '</span>'
+        '<div class="header-bell-panel" role="menu" aria-label="通知列表">'
+        '<div class="header-bell-panel-card">'
+        '<div class="header-bell-panel-head">'
+        '<span class="hbell-head-title">通知中心</span>'
+        '<span class="hbell-head-link" '
+        'onclick="(function(){const t=document.querySelectorAll(\'#main-tabs '
+        '.tab-wrapper button\');for(const b of t){if(b.textContent.includes(\'投递记录\'))'
+        '{b.click();break;}}})();">查看全部</span>'
+        '</div>'
+        f'{panel_body}'
+        '</div>'
+        '</div>'
+        '</div>'
+    )
+
+
 def build_header_html(user_name: str, version: str) -> str:
-    """构建顶部通栏 HTML"""
+    """构建顶部通栏 HTML（含 logo / 通知铃铛 / 用户下拉菜单）。"""
     safe_name = html_mod.escape(user_name) if user_name else ""
     if safe_name:
+        bell_block = _build_notification_html(user_name)
+        avatar_letter = safe_name[0].upper() if safe_name else "?"
         user_block = (
-            f'<div class="header-user-dropdown">'
+            f'<div class="header-user-dropdown" role="button" tabindex="0" '
+            f'aria-haspopup="menu" aria-expanded="false" aria-label="用户菜单" '
+            f'data-haju-menu="user" '
+            f'onmouseenter="this.setAttribute(\'aria-expanded\',\'true\')" '
+            f'onmouseleave="this.setAttribute(\'aria-expanded\',\'false\')" '
+            f'onfocus="this.setAttribute(\'aria-expanded\',\'true\')" '
+            f'onblur="this.setAttribute(\'aria-expanded\',\'false\')" '
+            f'onkeydown="if(event.key===\'Enter\'||event.key===\' \')'
+            f'{{event.preventDefault();this.classList.toggle(\'open\');'
+            f'this.setAttribute(\'aria-expanded\',this.classList.contains(\'open\'));}}'
+            f'else if(event.key===\'Escape\')'
+            f'{{this.classList.remove(\'open\');this.setAttribute(\'aria-expanded\',\'false\');this.blur();}}">'
             f'<span class="header-user-trigger">'
-            f'\U0001F464 {safe_name}'
-            f'<svg class="header-user-arrow" viewBox="0 0 12 12" width="12" height="12">'
+            f'<span class="header-user-avatar" aria-hidden="true">{avatar_letter}</span>'
+            f'<span class="header-user-name">{safe_name}</span>'
+            f'<svg class="header-user-arrow" viewBox="0 0 12 12" '
+            f'width="12" height="12" aria-hidden="true" role="img">'
             f'<path d="M3 4.5L6 7.5L9 4.5" fill="none" stroke="currentColor" '
             f'stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>'
             f'</svg>'
             f'</span>'
-            f'<div class="header-user-menu">'
+            f'<div class="header-user-menu" role="menu">'
+            f'<div class="header-user-menu-card">'
             f'<div class="header-user-menu-item header-user-info">'
-            f'\U0001F464 {safe_name}'
+            f'<span class="header-user-avatar header-user-avatar-lg" '
+            f'aria-hidden="true">{avatar_letter}</span>'
+            f'<div class="header-user-info-text">'
+            f'<div class="header-user-info-name">{safe_name}</div>'
+            f'<div class="header-user-info-sub">已登录</div>'
+            f'</div>'
             f'</div>'
             f'<div class="header-user-menu-divider"></div>'
-            f'<div class="header-user-menu-item header-logout-item" '
+            f'<div class="header-user-menu-item" role="menuitem" '
+            f'onclick="(function(){{const t=document.querySelectorAll('
+            f'\'#main-tabs .tab-wrapper button\');'
+            f'for(const b of t){{if(b.textContent.includes(\'系统设置\'))'
+            f'{{b.click();break;}}}}}})();">'
+            f'<svg viewBox="0 0 24 24" width="16" height="16" fill="none" '
+            f'stroke="currentColor" stroke-width="1.8" stroke-linecap="round" '
+            f'stroke-linejoin="round" aria-hidden="true" role="img">'
+            f'<circle cx="12" cy="12" r="3"/>'
+            f'<path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 '
+            f'2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 '
+            f'2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l'
+            f'-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 '
+            f'1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 '
+            f'1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 '
+            f'0 0 0 1.82.33h.0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 '
+            f'1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 '
+            f'2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.0a1.65 1.65 0 0 0 1.51 1H21'
+            f'a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>'
+            f'</svg>'
+            f'<span>系统设置</span>'
+            f'</div>'
+            f'<div class="header-user-menu-divider"></div>'
+            f'<div class="header-user-menu-item header-logout-item" role="menuitem" '
             f'onclick="document.querySelector(\'#logout-btn\').click()">'
-            f'\U0001F6AA 退出登录'
+            f'<svg viewBox="0 0 24 24" width="16" height="16" fill="none" '
+            f'stroke="currentColor" stroke-width="1.8" stroke-linecap="round" '
+            f'stroke-linejoin="round" aria-hidden="true" role="img">'
+            f'<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>'
+            f'<polyline points="16 17 21 12 16 7"/>'
+            f'<line x1="21" y1="12" x2="9" y2="12"/>'
+            f'</svg>'
+            f'<span>退出登录</span>'
+            f'</div>'
             f'</div>'
             f'</div>'
             f'</div>'
         )
     else:
+        bell_block = ""
         user_block = ""
     return (
         '<div class="app-header-bar">'
@@ -442,6 +637,7 @@ def build_header_html(user_name: str, version: str) -> str:
         "</div>"
         '<div class="hr">'
         f'<span class="ver">V{version}</span>'
+        f"{bell_block}"
         f"{user_block}"
         "</div>"
         "</div>"
