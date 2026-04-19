@@ -365,7 +365,7 @@ footer { display: none !important; }
 /* 右侧内容区 */
 #main-tabs > .tabitem {
     flex: 1 !important;
-    padding: 18px 28px 28px 28px !important;
+    padding: 10px 28px 28px 28px !important;
     background: transparent !important;
     min-height: calc(100vh - 60px) !important;
     overflow-y: auto !important;
@@ -1422,9 +1422,29 @@ body.haju-bg-pause .bg-fx .aurora,
 #main-tabs > .tab-wrapper {
     background: linear-gradient(180deg, rgba(12,10,34,0.75) 0%, rgba(18,14,48,0.55) 100%) !important;
     border-right: 1px solid rgba(255,255,255,0.06) !important;
+    border-bottom: none !important;
+    border-top: none !important;
+    border-left: none !important;
     backdrop-filter: blur(20px) saturate(130%) !important;
     -webkit-backdrop-filter: blur(20px) saturate(130%) !important;
     box-shadow: 4px 0 16px rgba(0,0,0,0.3) !important;
+    --block-border-color: transparent !important;
+    --border-color-primary: transparent !important;
+}
+#main-tabs > .tab-wrapper > .tab-container {
+    border: none !important;
+    --block-border-color: transparent !important;
+    --border-color-primary: transparent !important;
+}
+#main-tabs > .tab-wrapper,
+#main-tabs > .tab-wrapper > .tab-container,
+#main-tabs > .tab-wrapper > .tab-container > * {
+    border-bottom-color: transparent !important;
+    border-top-color: transparent !important;
+}
+#main-tabs.tabs {
+    border: none !important;
+    --block-border-color: transparent !important;
 }
 #main-tabs > .tab-wrapper::before {
     color: var(--c-text-1) !important;
@@ -1670,8 +1690,10 @@ ul[role="listbox"] > li {
 }
 #main-tabs .gradio-dropdown .wrap,
 #main-tabs [data-testid="dropdown"] .wrap,
+#main-tabs .wrap:has(> .wrap-inner),
 #login-card .gradio-dropdown .wrap,
-#login-card [data-testid="dropdown"] .wrap {
+#login-card [data-testid="dropdown"] .wrap,
+#login-card .wrap:has(> .wrap-inner) {
     background:
         linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.01)),
         rgba(17,22,48,0.55) !important;
@@ -1686,7 +1708,8 @@ ul[role="listbox"] > li {
                 background 0.25s ease, transform 0.18s ease !important;
 }
 #main-tabs .gradio-dropdown .wrap:hover,
-#main-tabs [data-testid="dropdown"] .wrap:hover {
+#main-tabs [data-testid="dropdown"] .wrap:hover,
+#main-tabs .wrap:has(> .wrap-inner):hover {
     border-color: rgba(141,187,255,0.45) !important;
     background:
         linear-gradient(180deg, rgba(79,139,255,0.10), rgba(168,115,245,0.05)),
@@ -1697,6 +1720,7 @@ ul[role="listbox"] > li {
 }
 #main-tabs .gradio-dropdown .wrap:focus-within,
 #main-tabs [data-testid="dropdown"] .wrap:focus-within,
+#main-tabs .wrap:has(> .wrap-inner):focus-within,
 #login-card .gradio-dropdown .wrap:focus-within {
     border-color: rgba(141,187,255,0.85) !important;
     box-shadow:
@@ -1709,6 +1733,7 @@ ul[role="listbox"] > li {
 }
 #main-tabs .gradio-dropdown .wrap-inner,
 #main-tabs [data-testid="dropdown"] .wrap-inner,
+#main-tabs .wrap > .wrap-inner,
 #login-card .gradio-dropdown .wrap-inner,
 #login-card [data-testid="dropdown"] .wrap-inner {
     background: transparent !important;
@@ -1720,6 +1745,7 @@ ul[role="listbox"] > li {
 }
 #main-tabs .gradio-dropdown input,
 #main-tabs [data-testid="dropdown"] input,
+#main-tabs .wrap-inner input,
 #login-card .gradio-dropdown input,
 #login-card [data-testid="dropdown"] input {
     background: transparent !important;
@@ -1735,6 +1761,7 @@ ul[role="listbox"] > li {
 /* 自定义下拉箭头: 用 SVG mask 覆盖 Gradio 默认 SVG */
 #main-tabs .gradio-dropdown .wrap-inner::after,
 #main-tabs [data-testid="dropdown"] .wrap-inner::after,
+#main-tabs .wrap > .wrap-inner::after,
 #login-card .gradio-dropdown .wrap-inner::after {
     content: '';
     position: absolute;
@@ -1750,6 +1777,7 @@ ul[role="listbox"] > li {
 }
 #main-tabs .gradio-dropdown .wrap-inner:focus-within::after,
 #main-tabs [data-testid="dropdown"] .wrap-inner:focus-within::after,
+#main-tabs .wrap > .wrap-inner:focus-within::after,
 #login-card .gradio-dropdown .wrap-inner:focus-within::after,
 #main-tabs [data-testid="dropdown"]:has(ul[role="listbox"]) .wrap-inner::after {
     transform: translateY(-50%) rotate(180deg);
@@ -1757,11 +1785,14 @@ ul[role="listbox"] > li {
 }
 #main-tabs .gradio-dropdown .wrap-inner { position: relative !important; }
 #main-tabs [data-testid="dropdown"] .wrap-inner { position: relative !important; }
+#main-tabs .wrap > .wrap-inner { position: relative !important; }
 #login-card .gradio-dropdown .wrap-inner { position: relative !important; }
 /* 隐藏 Gradio 自带的箭头 svg, 让我们的 ::after 接管 */
 #main-tabs .gradio-dropdown svg.dropdown-arrow,
 #main-tabs [data-testid="dropdown"] .icon-wrap svg,
 #main-tabs [data-testid="dropdown"] .wrap-inner > svg,
+#main-tabs .wrap > .wrap-inner > svg,
+#main-tabs .wrap-inner > .icon-wrap,
 #login-card .gradio-dropdown svg.dropdown-arrow,
 #login-card [data-testid="dropdown"] .icon-wrap svg {
     display: none !important;
@@ -2644,18 +2675,40 @@ html, body { scrollbar-width: thin; }
 }
 
 /* --- Dropdown / 单选等组合控件的外壳统一暗色 --- */
-#main-tabs .wrap-inner,
-#main-tabs .wrap-inner.svelte-1ncjjyx,
 #main-tabs .secondary-wrap,
-#main-tabs .container,
 #main-tabs .gr-dropdown,
 #main-tabs .gr-dropdown input,
-#main-tabs .dropdown-arrow,
-#main-tabs [data-testid="dropdown"] input,
-#main-tabs [data-testid="dropdown"] .wrap-inner {
+#main-tabs .dropdown-arrow {
     background: rgba(17,22,48,0.65) !important;
     color: var(--c-text-1) !important;
     border-color: rgba(255,255,255,0.1) !important;
+}
+#main-tabs .container:not(.gradio-container) {
+    background: transparent !important;
+    border: none !important;
+}
+/* Dropdown 外层 .block 容器: 去掉 Gradio 默认的灰色边框 */
+#main-tabs .gradio-dropdown,
+#main-tabs [data-testid="dropdown"] {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    --block-border-color: transparent !important;
+    --block-background-fill: transparent !important;
+    --input-border-color: transparent !important;
+}
+#main-tabs .gradio-dropdown.block,
+#main-tabs [data-testid="dropdown"].block,
+#main-tabs .block:has(> .gradio-dropdown),
+#main-tabs .block:has(> [data-testid="dropdown"]),
+#main-tabs .block:has(.gradio-dropdown),
+#main-tabs .block:has([data-testid="dropdown"]) {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    --block-border-color: transparent !important;
+    --block-background-fill: transparent !important;
 }
 #main-tabs .token,
 #main-tabs .dropdown-option {
@@ -2869,6 +2922,14 @@ html, body { scrollbar-width: thin; }
     margin: 0 !important;
 }
 
+/* Slider 内部 .head 容器: 强制顶端对齐, 防止 reset 按钮偏移 */
+#main-tabs .gradio-slider .head,
+#main-tabs .block:has(input[type="range"]) .head {
+    display: flex !important;
+    align-items: flex-start !important;
+    gap: 8px !important;
+    margin-bottom: 2px !important;
+}
 /* 还原按钮 ↺ — 圆形玻璃按钮, hover 旋转 + 高亮 */
 #main-tabs .reset-button,
 #main-tabs button[data-testid="reset-button"],

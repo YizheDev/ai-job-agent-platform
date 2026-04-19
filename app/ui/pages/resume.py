@@ -330,9 +330,9 @@ def create_resume_page(login_state):
                         '  <div class="rch-sub">支持 PDF / DOCX · 单文件 ≤10MB</div>'
                         '</div>'
                     )
-            file_input = gr.File(
+                    file_input = gr.File(
                         label="选择文件",
-                file_types=[".pdf", ".docx"],
+                        file_types=[".pdf", ".docx"],
                         elem_classes=["res-file-input"],
                     )
                     upload_btn = gr.Button(
@@ -378,17 +378,17 @@ def create_resume_page(login_state):
                         '  <span>列表为空时, 请先在右侧上传一份简历; 或点击「刷新列表」从本地加载</span>'
                         '</div>'
                     )
-            resume_table = gr.Dataframe(
-                headers=["ID", "文件名", "格式", "类型", "默认", "创建时间"],
-                datatype=["number", "str", "str", "str", "str", "str"],
-                value=[],
-                interactive=False,
+                    resume_table = gr.Dataframe(
+                        headers=["ID", "文件名", "格式", "类型", "默认", "创建时间"],
+                        datatype=["number", "str", "str", "str", "str", "str"],
+                        value=[],
+                        interactive=False,
                         elem_classes=["res-table"],
-            )
-            selected_id = gr.Textbox(
+                    )
+                    selected_id = gr.Textbox(
                         label="已选简历 ID",
-                placeholder="点击上方表格任意行选中",
-                interactive=True,
+                        placeholder="点击上方表格任意行选中",
+                        interactive=True,
                         elem_classes=["res-selected-box"],
                     )
                     with gr.Row(elem_classes=["res-action-row"]):
@@ -587,7 +587,7 @@ _RES_STYLE = """
 /* ---------- 页头 + KPI ---------- */
 .res-root .res-head {
     display: flex; align-items: flex-start; justify-content: space-between;
-    margin: -8px 0 14px;
+    margin: -10px 0 10px;
     gap: 16px;
 }
 .res-root .res-head-left {

@@ -1,9 +1,0 @@
-buttons: 17
-saved dashboard
-saved resume
-saved jd_match
-saved optimize
-saved boss
-saved delivery
-saved records
-saved settings

@@ -432,7 +432,7 @@ _OP_STYLE = """
 /* 页头 */
 .op-root .op-head {
     display: flex; align-items: center; gap: 14px;
-    margin: -8px 0 6px;
+    margin: -10px 0 4px;
 }
 .op-root .op-head-icon {
     width: 44px; height: 44px; border-radius: 12px;

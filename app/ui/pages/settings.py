@@ -360,7 +360,7 @@ def create_settings_page():
         with gr.Tabs(elem_id="settings-tabs", elem_classes=["st-tabs"]):
 
             # ============ 投递风控 ============
-        with gr.Tab("投递风控"):
+            with gr.Tab("投递风控"):
                 with gr.Column(elem_classes=["st-card", "st-card-risk"]):
                     gr.HTML(_render_card_head(
                         "st-ch-blue",
@@ -377,44 +377,44 @@ def create_settings_page():
                         "下列参数共同组成 <b>拟人节奏</b>, 可显著降低封号概率.",
                     ))
 
-            max_daily = gr.Slider(
-                1, 50, value=settings.MAX_DAILY_DELIVERY,
-                step=1, label="每日最大投递量",
+                    max_daily = gr.Slider(
+                        1, 50, value=settings.MAX_DAILY_DELIVERY,
+                        step=1, label="每日最大投递量",
                         elem_classes=["st-slider"],
-            )
+                    )
                     with gr.Row(elem_classes=["st-slider-row"]):
-                min_delay = gr.Slider(
-                    1, 10, value=settings.MIN_DELAY_SECONDS,
-                    step=1, label="最小延时 (秒)",
+                        min_delay = gr.Slider(
+                            1, 10, value=settings.MIN_DELAY_SECONDS,
+                            step=1, label="最小延时 (秒)",
                             elem_classes=["st-slider", "st-slider-half"],
                         )
                         gr.HTML(
                             '<div class="st-slider-spacer" aria-hidden="true"></div>',
                             elem_classes=["st-slider-gap"],
-                )
-                max_delay = gr.Slider(
-                    1, 10, value=settings.MAX_DELAY_SECONDS,
-                    step=1, label="最大延时 (秒)",
+                        )
+                        max_delay = gr.Slider(
+                            1, 10, value=settings.MAX_DELAY_SECONDS,
+                            step=1, label="最大延时 (秒)",
                             elem_classes=["st-slider", "st-slider-half"],
-                )
+                        )
                     with gr.Row(elem_classes=["st-slider-row"]):
-                start_hour = gr.Slider(
-                    0, 23, value=settings.DELIVERY_START_HOUR,
-                    step=1, label="投递开始时段",
+                        start_hour = gr.Slider(
+                            0, 23, value=settings.DELIVERY_START_HOUR,
+                            step=1, label="投递开始时段",
                             elem_classes=["st-slider", "st-slider-half"],
                         )
                         gr.HTML(
                             '<div class="st-slider-spacer" aria-hidden="true"></div>',
                             elem_classes=["st-slider-gap"],
-                )
-                end_hour = gr.Slider(
-                    1, 24, value=settings.DELIVERY_END_HOUR,
-                    step=1, label="投递结束时段",
+                        )
+                        end_hour = gr.Slider(
+                            1, 24, value=settings.DELIVERY_END_HOUR,
+                            step=1, label="投递结束时段",
                             elem_classes=["st-slider", "st-slider-half"],
-                )
-            threshold = gr.Slider(
-                0, 100, value=settings.MATCH_THRESHOLD,
-                step=5, label="最低匹配分数阈值",
+                        )
+                    threshold = gr.Slider(
+                        0, 100, value=settings.MATCH_THRESHOLD,
+                        step=5, label="最低匹配分数阈值",
                         elem_classes=["st-slider"],
                     )
 
@@ -423,13 +423,13 @@ def create_settings_page():
                         elem_classes=["st-btn", "st-btn-primary"],
                     )
                     save_risk_btn.click(
-                fn=_save_risk_settings,
-                inputs=[max_daily, min_delay, max_delay, start_hour, end_hour, threshold],
-                outputs=[settings_msg],
-            )
+                        fn=_save_risk_settings,
+                        inputs=[max_daily, min_delay, max_delay, start_hour, end_hour, threshold],
+                        outputs=[settings_msg],
+                    )
 
             # ============ 大模型 API ============
-        with gr.Tab("大模型 API"):
+            with gr.Tab("大模型 API"):
                 with gr.Column(elem_classes=["st-card", "st-card-api"]):
                     gr.HTML(_render_card_head(
                         "st-ch-violet",
@@ -442,38 +442,38 @@ def create_settings_page():
                         "支持 OpenAI / DeepSeek / 通义千问 等兼容 OpenAI 格式的服务",
                     ))
 
-            api_key = gr.Textbox(
-                label="API Key",
-                type="password",
-                value=settings.LLM_API_KEY,
-                placeholder="sk-...",
+                    api_key = gr.Textbox(
+                        label="API Key",
+                        type="password",
+                        value=settings.LLM_API_KEY,
+                        placeholder="sk-...",
                         elem_classes=["st-input-field"],
-            )
-            base_url = gr.Textbox(
-                label="API Base URL",
-                value=settings.LLM_BASE_URL,
-                placeholder="https://api.openai.com/v1",
+                    )
+                    base_url = gr.Textbox(
+                        label="API Base URL",
+                        value=settings.LLM_BASE_URL,
+                        placeholder="https://api.openai.com/v1",
                         elem_classes=["st-input-field"],
-            )
-            model = gr.Dropdown(
-                label="模型名称",
-                choices=[
-                    "deepseek-chat", "deepseek-reasoner",
-                    "gpt-4", "gpt-4o", "gpt-4o-mini", "gpt-3.5-turbo",
-                    "qwen-plus", "qwen-turbo", "qwen-max",
-                    "glm-4", "glm-4-flash",
-                ],
-                value=settings.LLM_MODEL,
-                allow_custom_value=True,
+                    )
+                    model = gr.Dropdown(
+                        label="模型名称",
+                        choices=[
+                            "deepseek-chat", "deepseek-reasoner",
+                            "gpt-4", "gpt-4o", "gpt-4o-mini", "gpt-3.5-turbo",
+                            "qwen-plus", "qwen-turbo", "qwen-max",
+                            "glm-4", "glm-4-flash",
+                        ],
+                        value=settings.LLM_MODEL,
+                        allow_custom_value=True,
                         elem_classes=["st-input-field"],
                     )
                     save_api_btn = gr.Button(
                         "保存 API 配置 (含校验)", variant="primary",
                         elem_classes=["st-btn", "st-btn-primary", "st-btn-api-save"],
-            )
+                    )
                     save_api_btn.click(
-                fn=_save_api_settings,
-                inputs=[api_key, base_url, model],
+                        fn=_save_api_settings,
+                        inputs=[api_key, base_url, model],
                         outputs=[settings_msg, save_api_btn],
                     )
                     gr.HTML(_render_tip_html(
@@ -535,7 +535,7 @@ def create_settings_page():
                         )
 
             # ============ 用户协议 ============
-        with gr.Tab("用户协议"):
+            with gr.Tab("用户协议"):
                 with gr.Column(elem_classes=["st-card", "st-card-agreement"]):
                     gr.HTML(_render_card_head(
                         "st-ch-pink",
@@ -549,7 +549,7 @@ def create_settings_page():
                     gr.Markdown(_USER_AGREEMENT_MARKDOWN, elem_classes=["st-agreement-md"])
 
             # ============ 关于 ============
-        with gr.Tab("关于"):
+            with gr.Tab("关于"):
                 with gr.Column(elem_classes=["st-card", "st-card-about"]):
                     gr.HTML(_render_card_head(
                         "st-ch-orange",
@@ -587,7 +587,7 @@ _ST_STYLE = """
 /* 页头 */
 .st-root .st-head {
     display: flex; align-items: center; gap: 14px;
-    margin: -8px 0 6px;
+    margin: -10px 0 4px;
 }
 .st-root .st-head-icon {
     width: 44px; height: 44px; border-radius: 12px;

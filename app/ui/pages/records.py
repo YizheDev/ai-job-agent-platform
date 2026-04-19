@@ -586,7 +586,7 @@ _RC_STYLE = """
 /* 页头 */
 .rc-root .rc-head {
     display: flex; align-items: center; gap: 14px;
-    margin: -8px 0 6px;
+    margin: -10px 0 4px;
 }
 .rc-root .rc-head-icon {
     width: 44px; height: 44px; border-radius: 12px;

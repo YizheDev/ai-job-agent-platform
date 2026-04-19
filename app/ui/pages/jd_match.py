@@ -527,7 +527,7 @@ _JD_STYLE = """
 /* 页头 */
 .jd-root .jd-head {
     display: flex; align-items: center; gap: 14px;
-    margin: -8px 0 14px;
+    margin: -10px 0 6px;
 }
 .jd-root .jd-head-icon {
     width: 44px; height: 44px; border-radius: 12px;
@@ -559,12 +559,12 @@ _JD_STYLE = """
     -webkit-backdrop-filter: blur(20px) saturate(130%);
     border: 1px solid rgba(255,255,255,0.07) !important;
     border-radius: 20px !important;
-    padding: 22px !important;
+    padding: 18px 22px !important;
     box-shadow:
         0 1px 0 rgba(255,255,255,0.05) inset,
         0 12px 32px rgba(0,0,0,0.32) !important;
     overflow: hidden;
-    gap: 12px !important;
+    gap: 10px !important;
     display: flex !important;
     flex-direction: column !important;
 }
@@ -582,9 +582,9 @@ _JD_STYLE = """
     grid-template-rows: auto auto;
     column-gap: 12px;
     align-items: center;
-    padding-bottom: 14px;
+    padding-bottom: 10px;
     border-bottom: 1px solid rgba(255,255,255,0.06);
-    margin-bottom: 4px;
+    margin-bottom: 2px;
 }
 .jd-scope .jch-icon {
     grid-row: 1 / span 2;

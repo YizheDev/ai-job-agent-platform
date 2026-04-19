@@ -836,7 +836,7 @@ _DLV_STYLE = """
 /* 页头 */
 .dlv-root .dlv-head {
     display: flex; align-items: center; gap: 14px;
-    margin: -8px 0 6px;
+    margin: -10px 0 4px;
 }
 .dlv-root .dlv-head-icon {
     width: 44px; height: 44px; border-radius: 12px;
